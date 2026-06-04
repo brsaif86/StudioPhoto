@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY
+from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY, default_workers
 
 
 class GradePanel(QWidget):
@@ -52,10 +52,14 @@ class GradePanel(QWidget):
         self.suffix_edit.setMaximumWidth(100)
         left.addRow("Suffixe :", self.suffix_edit)
 
+        _dw = default_workers()
         self.workers_spin = QSpinBox()
-        self.workers_spin.setRange(1, 16)
-        self.workers_spin.setValue(6)
+        self.workers_spin.setRange(1, 64)
+        self.workers_spin.setValue(_dw)
         self.workers_spin.setMaximumWidth(70)
+        self.workers_spin.setToolTip(
+            f"60 % des cœurs physiques détectés ({_dw} par défaut sur cette machine)"
+        )
         left.addRow("Processus :", self.workers_spin)
 
         self.quality_spin = QSpinBox()
@@ -118,7 +122,7 @@ class GradePanel(QWidget):
         self.suffix_edit.setText(cfg.get("grade_suffix", DEFAULT_SUFFIX))
         self.recursive_cb.setChecked(cfg.get("grade_recursive", True))
         self.skip_cb.setChecked(cfg.get("grade_skip", True))
-        self.workers_spin.setValue(cfg.get("grade_workers", 6))
+        self.workers_spin.setValue(cfg.get("grade_workers", default_workers()))
         self.quality_spin.setValue(cfg.get("grade_quality", DEFAULT_QUALITY))
 
     def save_config(self, cfg: dict) -> None:

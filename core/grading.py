@@ -5,6 +5,8 @@ Fonctions pures, sans dépendance UI.
 Toutes les fonctions exécutées par les workers sont au niveau module (picklables).
 """
 
+import math
+import os
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +15,20 @@ from PIL import Image, ImageFilter
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".JPG", ".JPEG"}
 DEFAULT_SUFFIX = "_graded"
 DEFAULT_QUALITY = 95
+
+
+def default_workers() -> int:
+    """Retourne 60 % des cœurs physiques disponibles (min 1).
+
+    Utilise psutil pour les cœurs physiques réels (sans hyperthreading).
+    Repli sur os.cpu_count() // 2 si psutil absent.
+    """
+    try:
+        import psutil
+        physical = psutil.cpu_count(logical=False) or 1
+    except ImportError:
+        physical = max(1, (os.cpu_count() or 2) // 2)
+    return max(1, math.ceil(physical * 0.6))
 
 
 # ── Détection N&B ─────────────────────────────────────────────────────────────

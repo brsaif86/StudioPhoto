@@ -7,30 +7,35 @@ Stocke un JSON dans %APPDATA%/StudioPhoto/settings.json.
 import json
 from pathlib import Path
 
+from core.grading import default_workers
+
 _CONFIG_PATH = Path.home() / "AppData" / "Roaming" / "StudioPhoto" / "settings.json"
 
-_DEFAULTS = {
-    "grade_source":   "",
-    "grade_output":   "",
-    "grade_suffix":   "_graded",
-    "grade_recursive": True,
-    "grade_skip":      True,
-    "grade_workers":   6,
-    "grade_quality":   95,
-    "rename_base":     "",
-    "rename_include_root": False,
-    "rename_dryrun":   True,
-}
+
+def _defaults() -> dict:
+    return {
+        "grade_source":        "",
+        "grade_output":        "",
+        "grade_suffix":        "_graded",
+        "grade_recursive":     True,
+        "grade_skip":          True,
+        "grade_workers":       default_workers(),   # 60 % des coeurs physiques
+        "grade_quality":       95,
+        "rename_base":         "",
+        "rename_include_root": False,
+        "rename_dryrun":       True,
+    }
 
 
 def load() -> dict:
+    defaults = _defaults()
     if _CONFIG_PATH.exists():
         try:
             data = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
-            return {**_DEFAULTS, **data}
+            return {**defaults, **data}
         except Exception:
             pass
-    return dict(_DEFAULTS)
+    return defaults
 
 
 def save(cfg: dict) -> None:

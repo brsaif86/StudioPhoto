@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY, collect_grade_tasks
+from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY, collect_grade_tasks, default_workers
 from core.renaming import collect_rename_targets, rename_folder
 from core.runner import run_grade_batch
 
@@ -141,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--no-recursive", dest="recursive", action="store_false")
     g.add_argument("--skip", action="store_true", default=True)
     g.add_argument("--no-skip", dest="skip", action="store_false")
-    g.add_argument("--workers", "-w", type=int, default=6)
+    g.add_argument("--workers", "-w", type=int, default=default_workers())
     g.add_argument("--quality", "-q", type=int, default=DEFAULT_QUALITY)
 
     # rename
@@ -154,7 +154,8 @@ def build_parser() -> argparse.ArgumentParser:
     # benchmark
     b = sub.add_parser("benchmark", help="Mesure le débit (images/s)")
     b.add_argument("folder")
-    b.add_argument("--workers", "-w", type=int, nargs="+", default=[6, 8])
+    _dw = default_workers()
+    b.add_argument("--workers", "-w", type=int, nargs="+", default=[_dw, min(_dw + 2, 16)])
     b.add_argument("--sample", "-n", type=int, default=20,
                    help="Nombre d'images à traiter (défaut : 20)")
     b.add_argument("--suffix", "-s", default=DEFAULT_SUFFIX)

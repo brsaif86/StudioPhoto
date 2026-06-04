@@ -14,15 +14,12 @@ jobs:
         include:
           - os: windows-latest
             artifact: StudioPhoto-windows-x86_64.exe
-            exe_name: StudioPhoto.exe
 
           - os: macos-13          # Intel x86_64
             artifact: StudioPhoto-macos-intel
-            exe_name: StudioPhoto
 
           - os: macos-14          # Apple Silicon arm64
             artifact: StudioPhoto-macos-silicon
-            exe_name: StudioPhoto
 
     runs-on: ${{ matrix.os }}
 
@@ -37,30 +34,44 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install Pillow numpy PySide6 pyinstaller
+        run: pip install Pillow numpy PySide6 pyinstaller psutil
 
-      # ── Windows ────────────────────────────────────────────────────────────
+      # ── Génération icône (si app_icon.png présent) ──────────────────────────
+      - name: Generate ICO (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path app_icon.png) { python make_ico.py }
+
+      - name: Generate ICNS (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if [ -f app_icon.png ]; then python make_ico.py; fi
+
+      # ── Build Windows ───────────────────────────────────────────────────────
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: |
-          python -m PyInstaller `
-            --onefile `
-            --windowed `
-            --name "StudioPhoto" `
-            --add-data "core;core" `
-            --add-data "ui;ui" `
-            ui_entry.py
+          $icon_args = if (Test-Path app_icon.ico) { "--icon app_icon.ico --add-data app_icon.ico;." } else { "" }
+          $cmd = "python -m PyInstaller --onefile --windowed --name StudioPhoto --add-data core;core --add-data ui;ui $icon_args ui_entry.py"
+          Invoke-Expression $cmd
 
-      # ── macOS ──────────────────────────────────────────────────────────────
+      # ── Build macOS ─────────────────────────────────────────────────────────
       - name: Build (macOS)
         if: runner.os == 'macOS'
         run: |
+          ICON_ARGS=""
+          if [ -f app_icon.ico ]; then
+            ICON_ARGS="--icon app_icon.ico --add-data app_icon.ico:."
+          elif [ -f app_icon.png ]; then
+            ICON_ARGS="--add-data app_icon.png:."
+          fi
           python -m PyInstaller \
             --onefile \
             --windowed \
             --name "StudioPhoto" \
             --add-data "core:core" \
             --add-data "ui:ui" \
+            $ICON_ARGS \
             ui_entry.py
 
       # ── Rename & upload ────────────────────────────────────────────────────
