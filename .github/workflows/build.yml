@@ -15,7 +15,7 @@ jobs:
           - os: windows-latest
             artifact: StudioPhoto-windows-x86_64.exe
 
-          - os: macos-13          # Intel x86_64
+          - os: macos-12          # Intel x86_64
             artifact: StudioPhoto-macos-intel
 
           - os: macos-14          # Apple Silicon arm64
