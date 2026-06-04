@@ -3,8 +3,8 @@ name: Build StudioPhoto
 on:
   push:
     tags:
-      - "v*"          # déclenché sur : git tag v1.0.0 && git push --tags
-  workflow_dispatch:  # ou manuellement depuis l'onglet Actions
+      - "v*"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,19 +13,16 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            arch: x86_64
             artifact: StudioPhoto-windows-x86_64.exe
-            add_data_sep: ";"
+            exe_name: StudioPhoto.exe
 
-          - os: macos-13         # Intel (Haswell, x86_64)
-            arch: x86_64
+          - os: macos-13          # Intel x86_64
             artifact: StudioPhoto-macos-intel
-            add_data_sep: ":"
+            exe_name: StudioPhoto
 
-          - os: macos-14         # Apple Silicon (M1, arm64)
-            arch: arm64
+          - os: macos-14          # Apple Silicon arm64
             artifact: StudioPhoto-macos-silicon
-            add_data_sep: ":"
+            exe_name: StudioPhoto
 
     runs-on: ${{ matrix.os }}
 
@@ -42,6 +39,7 @@ jobs:
       - name: Install dependencies
         run: pip install Pillow numpy PySide6 pyinstaller
 
+      # ── Windows ────────────────────────────────────────────────────────────
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -53,8 +51,9 @@ jobs:
             --add-data "ui;ui" `
             ui_entry.py
 
-      - name: Build (macOS Intel)
-        if: matrix.os == 'macos-13'
+      # ── macOS ──────────────────────────────────────────────────────────────
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
         run: |
           python -m PyInstaller \
             --onefile \
@@ -64,19 +63,7 @@ jobs:
             --add-data "ui:ui" \
             ui_entry.py
 
-      - name: Build (macOS Silicon — universal2)
-        if: matrix.os == 'macos-14'
-        run: |
-          python -m PyInstaller \
-            --onefile \
-            --windowed \
-            --name "StudioPhoto" \
-            --target-arch universal2 \
-            --add-data "core:core" \
-            --add-data "ui:ui" \
-            ui_entry.py
-
-      # ── Renommage de l'artefact ──────────────────────────────────────────
+      # ── Rename & upload ────────────────────────────────────────────────────
       - name: Rename artifact (Windows)
         if: runner.os == 'Windows'
         run: mv dist\StudioPhoto.exe dist\${{ matrix.artifact }}
@@ -85,7 +72,6 @@ jobs:
         if: runner.os == 'macOS'
         run: mv dist/StudioPhoto dist/${{ matrix.artifact }}
 
-      # ── Upload ────────────────────────────────────────────────────────────
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
