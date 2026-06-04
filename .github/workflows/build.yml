@@ -48,12 +48,23 @@ jobs:
           if [ -f app_icon.png ]; then python make_ico.py; fi
 
       # ── Build Windows ───────────────────────────────────────────────────────
+      # Note: `;` est un séparateur de commandes PowerShell — on utilise `:`
+      # (supporté sur toutes plateformes depuis PyInstaller 6.0).
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: |
-          $icon_args = if (Test-Path app_icon.ico) { "--icon app_icon.ico --add-data app_icon.ico;." } else { "" }
-          $cmd = "python -m PyInstaller --onefile --windowed --name StudioPhoto --add-data core;core --add-data ui;ui $icon_args ui_entry.py"
-          Invoke-Expression $cmd
+          $args = @(
+            "--onefile", "--windowed",
+            "--name", "StudioPhoto",
+            "--add-data", "core:core",
+            "--add-data", "ui:ui"
+          )
+          if (Test-Path app_icon.ico) {
+            $args += "--icon", "app_icon.ico"
+            $args += "--add-data", "app_icon.ico:."
+          }
+          $args += "ui_entry.py"
+          python -m PyInstaller @args
 
       # ── Build macOS ─────────────────────────────────────────────────────────
       - name: Build (macOS)
