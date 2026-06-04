@@ -1,0 +1,114 @@
+name: Build StudioPhoto
+
+on:
+  push:
+    tags:
+      - "v*"          # déclenché sur : git tag v1.0.0 && git push --tags
+  workflow_dispatch:  # ou manuellement depuis l'onglet Actions
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x86_64
+            artifact: StudioPhoto-windows-x86_64.exe
+            add_data_sep: ";"
+
+          - os: macos-13         # Intel (Haswell, x86_64)
+            arch: x86_64
+            artifact: StudioPhoto-macos-intel
+            add_data_sep: ":"
+
+          - os: macos-14         # Apple Silicon (M1, arm64)
+            arch: arm64
+            artifact: StudioPhoto-macos-silicon
+            add_data_sep: ":"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install Pillow numpy PySide6 pyinstaller
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -m PyInstaller `
+            --onefile `
+            --windowed `
+            --name "StudioPhoto" `
+            --add-data "core;core" `
+            --add-data "ui;ui" `
+            ui_entry.py
+
+      - name: Build (macOS Intel)
+        if: matrix.os == 'macos-13'
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --windowed \
+            --name "StudioPhoto" \
+            --add-data "core:core" \
+            --add-data "ui:ui" \
+            ui_entry.py
+
+      - name: Build (macOS Silicon — universal2)
+        if: matrix.os == 'macos-14'
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --windowed \
+            --name "StudioPhoto" \
+            --target-arch universal2 \
+            --add-data "core:core" \
+            --add-data "ui:ui" \
+            ui_entry.py
+
+      # ── Renommage de l'artefact ──────────────────────────────────────────
+      - name: Rename artifact (Windows)
+        if: runner.os == 'Windows'
+        run: mv dist\StudioPhoto.exe dist\${{ matrix.artifact }}
+
+      - name: Rename artifact (macOS)
+        if: runner.os == 'macOS'
+        run: mv dist/StudioPhoto dist/${{ matrix.artifact }}
+
+      # ── Upload ────────────────────────────────────────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          retention-days: 30
+
+  # ── Release GitHub automatique sur tag v* ─────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
