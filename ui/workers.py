@@ -1,7 +1,6 @@
 """
 ui/workers.py — QThread workers pour le traitement en arrière-plan
 ==================================================================
-Séparation stricte : ces classes n'importent que le core, jamais de widgets.
 """
 
 import threading
@@ -9,16 +8,18 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
-from core import config as cfg
 from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY
 from core.renaming import collect_rename_targets, rename_folder
 from core.runner import run_grade_batch
 
 
 class GradeWorker(QThread):
-    log_line   = Signal(str)
-    progress   = Signal(int, int)   # (done, total)
-    finished   = Signal(dict)       # résumé final
+    log_line    = Signal(str)
+    progress    = Signal(int, int)          # (done, total)
+    current     = Signal(str, str)          # (folder_name, file_name)
+    speed       = Signal(float)             # images/sec
+    eta         = Signal(int)               # seconds remaining
+    finished    = Signal(dict)              # résumé final
 
     def __init__(self, params: dict, parent=None):
         super().__init__(parent)
@@ -40,6 +41,9 @@ class GradeWorker(QThread):
             quality      = p.get("quality", DEFAULT_QUALITY),
             on_log       = self.log_line.emit,
             on_progress  = self.progress.emit,
+            on_current   = self.current.emit,
+            on_speed     = self.speed.emit,
+            on_eta       = self.eta.emit,
             cancel_event = self._cancel,
         )
         result["cancelled"] = self._cancel.is_set()
@@ -49,7 +53,8 @@ class GradeWorker(QThread):
 class RenameWorker(QThread):
     log_line  = Signal(str)
     progress  = Signal(int, int)
-    finished  = Signal(int, bool)   # (total_renamed, dry_run)
+    current   = Signal(str, str)          # (folder_name, "")
+    finished  = Signal(int, bool)         # (total_renamed, dry_run)
 
     def __init__(self, params: dict, parent=None):
         super().__init__(parent)
@@ -71,6 +76,7 @@ class RenameWorker(QThread):
         for i, (path, name) in enumerate(targets, 1):
             if self._cancel.is_set():
                 break
+            self.current.emit(name, "")
             renamed, _ = rename_folder(path, name, self.log_line.emit, dry_run)
             total_renamed += renamed
             self.progress.emit(i, len(targets))

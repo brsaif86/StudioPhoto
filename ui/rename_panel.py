@@ -62,7 +62,9 @@ class RenamePanel(QWidget):
         h.setContentsMargins(0, 0, 0, 0)
         h.addWidget(edit)
         btn = QPushButton("Parcourir…")
-        btn.setFixedWidth(100)
+        btn.setObjectName("btn_browse")
+        btn.setFixedWidth(90)
+        btn.setCursor(Qt.PointingHandCursor)
         btn.clicked.connect(lambda: self._browse(edit))
         h.addWidget(btn)
         return row
