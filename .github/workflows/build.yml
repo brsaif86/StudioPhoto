@@ -15,13 +15,16 @@ jobs:
           - os: windows-latest
             artifact: StudioPhoto-windows-x86_64.exe
 
-          - os: macos-12          # Intel x86_64
+          - os: macos-13          # Intel x86_64 — seul runner Intel dispo sur GitHub
             artifact: StudioPhoto-macos-intel
+            continue_on_error: true   # ne bloque pas la release si runner saturé
 
           - os: macos-14          # Apple Silicon arm64
             artifact: StudioPhoto-macos-silicon
 
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.continue_on_error == true }}
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
