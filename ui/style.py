@@ -56,6 +56,7 @@ QLabel#app_version {{
 
 /* ── Nav buttons ────────────────────────────────────────── */
 QPushButton#nav_grade,
+QPushButton#nav_compare,
 QPushButton#nav_rename {{
     background: transparent;
     color: {TEXT2};
@@ -69,6 +70,7 @@ QPushButton#nav_rename {{
 }}
 
 QPushButton#nav_grade:checked,
+QPushButton#nav_compare:checked,
 QPushButton#nav_rename:checked {{
     color: {ACCENT};
     border-left: 2px solid {ACCENT};
@@ -76,6 +78,7 @@ QPushButton#nav_rename:checked {{
 }}
 
 QPushButton#nav_grade:hover:!checked,
+QPushButton#nav_compare:hover:!checked,
 QPushButton#nav_rename:hover:!checked {{
     color: {TEXT1};
     background-color: {BG2};

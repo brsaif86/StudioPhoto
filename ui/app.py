@@ -16,6 +16,7 @@ from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor, QFont
 from core import config as cfg_store
 from ui.grade_panel import GradePanel
 from ui.rename_panel import RenamePanel
+from ui.compare_panel import ComparePanel
 from ui.workers import GradeWorker, RenameWorker
 from ui.style import QSS, ACCENT, SUCCESS, ERROR, SKIP, TEXT2, TEXT3
 from version import FULL_NAME, __version__
@@ -73,9 +74,14 @@ class MainWindow(QMainWindow):
         v.addWidget(self._hline())
 
         # Nav
-        self.nav_grade  = QPushButton("ÉTALONNAGE")
-        self.nav_rename = QPushButton("RENOMMAGE")
-        for btn, name in [(self.nav_grade, "nav_grade"), (self.nav_rename, "nav_rename")]:
+        self.nav_grade   = QPushButton("ÉTALONNAGE")
+        self.nav_compare = QPushButton("APERÇU")
+        self.nav_rename  = QPushButton("RENOMMAGE")
+        for btn, name in [
+            (self.nav_grade,   "nav_grade"),
+            (self.nav_compare, "nav_compare"),
+            (self.nav_rename,  "nav_rename"),
+        ]:
             btn.setObjectName(name)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
@@ -84,7 +90,8 @@ class MainWindow(QMainWindow):
 
         self.nav_grade.setChecked(True)
         self.nav_grade.clicked.connect(lambda: self._switch(0))
-        self.nav_rename.clicked.connect(lambda: self._switch(1))
+        self.nav_compare.clicked.connect(lambda: self._switch(1))
+        self.nav_rename.clicked.connect(lambda: self._switch(2))
 
         v.addStretch()
         v.addWidget(self._hline())
@@ -138,10 +145,12 @@ class MainWindow(QMainWindow):
         sc.setSpacing(0)
 
         self.stack = QStackedWidget()
-        self.grade_panel  = GradePanel()
-        self.rename_panel = RenamePanel()
-        self.stack.addWidget(self.grade_panel)
-        self.stack.addWidget(self.rename_panel)
+        self.grade_panel   = GradePanel()
+        self.compare_panel = ComparePanel()
+        self.rename_panel  = RenamePanel()
+        self.stack.addWidget(self.grade_panel)    # index 0
+        self.stack.addWidget(self.compare_panel)  # index 1
+        self.stack.addWidget(self.rename_panel)   # index 2
         sc.addWidget(self.stack)
         sc.addStretch()
 
@@ -149,7 +158,8 @@ class MainWindow(QMainWindow):
         v.addWidget(scroll, stretch=1)
 
         # Action bar — widget dédié avec objectName pour le QSS
-        v.addWidget(self._build_action_bar())
+        self.action_bar = self._build_action_bar()
+        v.addWidget(self.action_bar)
 
         # Progress card (masqué par défaut)
         self.progress_card = self._build_progress_card()
@@ -248,15 +258,37 @@ class MainWindow(QMainWindow):
     def _switch(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)
         self.nav_grade.setChecked(idx == 0)
-        self.nav_rename.setChecked(idx == 1)
+        self.nav_compare.setChecked(idx == 1)
+        self.nav_rename.setChecked(idx == 2)
+        # L'onglet Aperçu n'a pas de lot à lancer : on masque la barre d'action
+        is_compare = (idx == 1)
+        self.action_bar.setVisible(not is_compare)
+        # Pré-remplit l'aperçu avec une image du dossier source si dispo
+        if is_compare:
+            self._prefill_compare()
 
     # ── Run / Cancel ──────────────────────────────────────────────────────────
 
     def _on_run(self) -> None:
         if self.stack.currentIndex() == 0:
             self._start_grading()
-        else:
+        elif self.stack.currentIndex() == 2:
             self._start_renaming()
+
+    def _prefill_compare(self) -> None:
+        """Charge la première image JPEG du dossier source dans l'aperçu."""
+        if getattr(self.compare_panel.view, "_orig", None):
+            return  # déjà une image chargée
+        params = self.grade_panel.get_params()
+        folder = params.get("folder")
+        if not folder or not folder.is_dir():
+            return
+        from core.grading import SUPPORTED_EXTENSIONS
+        for p in sorted(folder.iterdir()):
+            if p.suffix in SUPPORTED_EXTENSIONS and not p.name.startswith("._") \
+                    and params["suffix"] not in p.stem:
+                self.compare_panel.load_image(p)
+                break
 
     def _start_grading(self) -> None:
         params = self.grade_panel.get_params()

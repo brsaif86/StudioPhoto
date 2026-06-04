@@ -189,6 +189,41 @@ def process_image(
         return f"  ✗ ERREUR {input_path.name}: {exc}"
 
 
+# ── Aperçu en mémoire (avant / après) ─────────────────────────────────────────
+
+def grade_preview(input_path: Path, max_dim: int = 1600):
+    """Étalonne une image EN MÉMOIRE et retourne (original, graded, mode, metrics).
+
+    - Ne sauvegarde rien sur disque (usage : prévisualisation UI).
+    - Réduit l'image si elle dépasse max_dim (aperçu rapide, rendu identique
+      visuellement à la pleine résolution car l'algo est par-pixel).
+    Retourne (PIL.Image original, PIL.Image graded, str mode, dict metrics).
+    """
+    img = Image.open(input_path).convert("RGB")
+
+    # Downscale pour l'aperçu (préserve le ratio)
+    w, h = img.size
+    if max(w, h) > max_dim:
+        scale = max_dim / max(w, h)
+        img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+
+    original = img.copy()
+    arr255 = np.asarray(img, dtype=np.float32)
+
+    if is_grayscale(arr255):
+        arr01  = arr255 / 255.0
+        graded = apply_bw_grade(arr01)
+        mode   = "N&B"
+        metrics = {}
+    else:
+        arr01  = arr255 / 255.0
+        metrics = analyze_image(arr01)
+        graded  = apply_color_grade(arr01, metrics)
+        mode    = "Couleur"
+
+    return original, graded, mode, metrics
+
+
 # ── Worker picklable (multiprocessing sous Windows) ───────────────────────────
 
 def _grade_worker(args: tuple) -> str:
