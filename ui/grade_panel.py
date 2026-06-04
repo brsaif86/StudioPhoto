@@ -1,16 +1,15 @@
 """
-ui/grade_panel.py — Onglet Étalonnage
+ui/grade_panel.py — Onglet Étalonnage v2
 """
 
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLineEdit, QPushButton, QCheckBox, QSpinBox, QLabel,
-    QFileDialog, QGroupBox,
+    QFileDialog, QGroupBox, QSizePolicy,
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QCursor
 
 from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY, default_workers
 
@@ -18,93 +17,97 @@ from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY, default_workers
 class GradePanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._build()
 
     def _build(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 8)
+        root.setContentsMargins(0, 4, 0, 0)
+        root.setSpacing(16)
 
         # ── Dossiers ──────────────────────────────────────────────────────
-        folder_box = QGroupBox("Dossiers")
-        fl = QFormLayout(folder_box)
-        fl.setLabelAlignment(Qt.AlignRight)
+        folder_box = QGroupBox("DOSSIERS")
+        fl = QGridLayout(folder_box)
+        fl.setContentsMargins(16, 20, 16, 16)
+        fl.setSpacing(10)
+        fl.setColumnStretch(1, 1)
 
-        self.src_edit = QLineEdit()
-        self.src_edit.setPlaceholderText("Dossier source des photos JPEG…")
-        src_row = self._browse_row(self.src_edit)
-        fl.addRow("Source :", src_row)
+        self.src_edit = self._path_input("Chemin du dossier source…")
+        self.out_edit = self._path_input("Vide = sous-dossier _output dans la source")
 
-        self.out_edit = QLineEdit()
-        self.out_edit.setPlaceholderText("Vide = sous-dossier _output dans la source")
-        out_row = self._browse_row(self.out_edit)
-        fl.addRow("Sortie :", out_row)
+        for row, (text, edit) in enumerate([
+            ("Source :", self.src_edit),
+            ("Sortie :", self.out_edit),
+        ]):
+            lbl = QLabel(text)
+            lbl.setObjectName("form_label")
+            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            browse = QPushButton("Parcourir…")
+            browse.setObjectName("btn_browse")
+            browse.setCursor(Qt.PointingHandCursor)
+            browse.clicked.connect(lambda _, e=edit: self._browse(e))
+            fl.addWidget(lbl,   row, 0)
+            fl.addWidget(edit,  row, 1)
+            fl.addWidget(browse, row, 2)
 
         root.addWidget(folder_box)
 
         # ── Options ────────────────────────────────────────────────────────
-        opt_box = QGroupBox("Options")
-        ol = QHBoxLayout(opt_box)
+        opt_box = QGroupBox("OPTIONS")
+        ol = QGridLayout(opt_box)
+        ol.setContentsMargins(16, 20, 16, 16)
+        ol.setSpacing(12)
+        ol.setColumnStretch(1, 1)
+        ol.setColumnStretch(3, 1)
 
-        # gauche : suffixe + workers + qualité
-        left = QFormLayout()
-        left.setLabelAlignment(Qt.AlignRight)
-
-        self.suffix_edit = QLineEdit(DEFAULT_SUFFIX)
-        self.suffix_edit.setMaximumWidth(100)
-        left.addRow("Suffixe :", self.suffix_edit)
-
+        # Colonne gauche : paramètres numériques
         _dw = default_workers()
+
+        self.suffix_edit  = QLineEdit(DEFAULT_SUFFIX)
         self.workers_spin = QSpinBox()
         self.workers_spin.setRange(1, 64)
         self.workers_spin.setValue(_dw)
-        self.workers_spin.setMaximumWidth(70)
-        self.workers_spin.setToolTip(
-            f"60 % des cœurs physiques détectés ({_dw} par défaut sur cette machine)"
-        )
-        left.addRow("Processus :", self.workers_spin)
-
+        self.workers_spin.setToolTip(f"60 % des cœurs physiques détectés ({_dw} par défaut)")
         self.quality_spin = QSpinBox()
         self.quality_spin.setRange(60, 100)
         self.quality_spin.setValue(DEFAULT_QUALITY)
-        self.quality_spin.setMaximumWidth(70)
-        left.addRow("Qualité JPEG :", self.quality_spin)
 
-        ol.addLayout(left)
-        ol.addSpacing(32)
+        for row, (text, widget) in enumerate([
+            ("Suffixe :",      self.suffix_edit),
+            ("Processus :",    self.workers_spin),
+            ("Qualité JPEG :", self.quality_spin),
+        ]):
+            lbl = QLabel(text)
+            lbl.setObjectName("form_label")
+            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            ol.addWidget(lbl,    row, 0)
+            ol.addWidget(widget, row, 1)
 
-        # droite : cases à cocher
-        right = QVBoxLayout()
-        self.recursive_cb = QCheckBox("Récursif (inclure les sous-dossiers)")
+        # Colonne droite : cases à cocher
+        self.recursive_cb = QCheckBox("Récursif (sous-dossiers)")
+        self.skip_cb      = QCheckBox("Ignorer les images déjà traitées (reprise)")
         self.recursive_cb.setChecked(True)
-        self.skip_cb = QCheckBox("Ignorer les images déjà traitées (reprise)")
         self.skip_cb.setChecked(True)
-        right.addWidget(self.recursive_cb)
-        right.addWidget(self.skip_cb)
-        right.addStretch()
-        ol.addLayout(right)
+
+        ol.addWidget(self.recursive_cb, 0, 3)
+        ol.addWidget(self.skip_cb,      1, 3)
 
         root.addWidget(opt_box)
-        root.addStretch()
 
-    def _browse_row(self, edit: QLineEdit) -> QWidget:
-        row = QWidget()
-        h = QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.addWidget(edit)
-        btn = QPushButton("Parcourir…")
-        btn.setObjectName("btn_browse")
-        btn.setFixedWidth(90)
-        btn.setCursor(Qt.PointingHandCursor)
-        btn.clicked.connect(lambda: self._browse(edit))
-        h.addWidget(btn)
-        return row
+    # ── Helpers ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _path_input(placeholder: str) -> QLineEdit:
+        e = QLineEdit()
+        e.setPlaceholderText(placeholder)
+        return e
 
     def _browse(self, edit: QLineEdit) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choisir un dossier")
         if path:
             edit.setText(path)
 
-    # ── Lecture / écriture des valeurs ─────────────────────────────────────
+    # ── Config ──────────────────────────────────────────────────────────────
 
     def get_params(self) -> dict:
         src = self.src_edit.text().strip()

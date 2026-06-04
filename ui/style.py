@@ -1,131 +1,158 @@
 """
-ui/style.py — QSS stylesheet v2
-Aesthetic: dark professional photo tool (Capture One × DaVinci Resolve)
-Palette: near-black bg · warm amber accent · muted greens/reds for status
+ui/style.py — QSS stylesheet v2.1
 """
 
-ACCENT   = "#C8A96E"   # amber gold
-BG0      = "#0B0B0B"   # deepest bg
-BG1      = "#111111"   # sidebar + panels
-BG2      = "#181818"   # elevated surface
-BG3      = "#202020"   # input bg / hover
-BORDER   = "#272727"   # subtle separator
-TEXT1    = "#E8E8E8"   # primary text
-TEXT2    = "#888888"   # secondary / labels
-TEXT3    = "#444444"   # disabled / placeholders
-SUCCESS  = "#5A9E6F"   # muted green
-ERROR    = "#9E5A5A"   # muted red
-SKIP     = "#555555"   # skipped (gray)
+ACCENT   = "#C8A96E"
+BG0      = "#0D0D0D"
+BG1      = "#131313"
+BG2      = "#1A1A1A"
+BG3      = "#222222"
+BORDER   = "#2C2C2C"
+TEXT1    = "#EBEBEB"
+TEXT2    = "#888888"
+TEXT3    = "#444444"
+SUCCESS  = "#6BAE82"
+ERROR    = "#AE6B6B"
+SKIP     = "#555555"
 
 QSS = f"""
-/* ─── Base ─────────────────────────────────────────────────────────────── */
-QMainWindow, QWidget {{
-    background-color: {BG0};
-    color: {TEXT1};
+
+/* ── Base ──────────────────────────────────────────────── */
+* {{
     font-family: "Segoe UI", "SF Pro Text", sans-serif;
     font-size: 13px;
+    color: {TEXT1};
+    background-color: transparent;
 }}
 
-/* ─── Sidebar ────────────────────────────────────────────────────────────── */
-#sidebar {{
+QMainWindow {{
+    background-color: {BG0};
+}}
+
+QWidget {{
+    background-color: transparent;
+}}
+
+/* ── Sidebar ────────────────────────────────────────────── */
+QWidget#sidebar {{
     background-color: {BG1};
     border-right: 1px solid {BORDER};
-    min-width: 180px;
-    max-width: 180px;
 }}
 
-#app_logo {{
+QLabel#app_logo {{
     color: {TEXT1};
-    font-size: 15px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    padding: 24px 20px 8px 20px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    background: transparent;
 }}
 
-#app_version {{
+QLabel#app_version {{
     color: {TEXT3};
     font-size: 10px;
     letter-spacing: 2px;
-    padding: 0px 20px 24px 20px;
+    background: transparent;
 }}
 
-/* ─── Nav Buttons ─────────────────────────────────────────────────────────── */
-QPushButton#nav_grade, QPushButton#nav_rename {{
+/* ── Nav buttons ────────────────────────────────────────── */
+QPushButton#nav_grade,
+QPushButton#nav_rename {{
     background: transparent;
     color: {TEXT2};
     border: none;
     border-left: 2px solid transparent;
-    padding: 14px 20px;
+    padding: 13px 20px;
     text-align: left;
     font-size: 11px;
-    letter-spacing: 1.5px;
-    font-weight: 500;
-}}
-
-QPushButton#nav_grade:checked, QPushButton#nav_rename:checked {{
-    color: {ACCENT};
-    border-left: 2px solid {ACCENT};
-    background-color: rgba(200, 169, 110, 0.06);
+    letter-spacing: 2px;
     font-weight: 600;
 }}
 
-QPushButton#nav_grade:hover:!checked, QPushButton#nav_rename:hover:!checked {{
+QPushButton#nav_grade:checked,
+QPushButton#nav_rename:checked {{
+    color: {ACCENT};
+    border-left: 2px solid {ACCENT};
+    background-color: rgba(200,169,110,0.07);
+}}
+
+QPushButton#nav_grade:hover:!checked,
+QPushButton#nav_rename:hover:!checked {{
     color: {TEXT1};
     background-color: {BG2};
     border-left: 2px solid {BORDER};
 }}
 
-/* ─── Group boxes / Sections ─────────────────────────────────────────────── */
+/* ── Stats sidebar ──────────────────────────────────────── */
+QLabel#stat_value {{
+    color: {TEXT1};
+    font-size: 20px;
+    font-weight: 300;
+    background: transparent;
+}}
+
+QLabel#stat_label {{
+    color: {TEXT3};
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    background: transparent;
+}}
+
+/* ── Content area ────────────────────────────────────────── */
+QWidget#content_area {{
+    background-color: {BG0};
+}}
+
+/* ── Group boxes ─────────────────────────────────────────── */
 QGroupBox {{
     background-color: {BG2};
     border: 1px solid {BORDER};
     border-radius: 6px;
-    margin-top: 12px;
-    padding: 16px 14px 14px 14px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 1.8px;
-    color: {TEXT2};
-    text-transform: uppercase;
+    margin-top: 22px;
+    padding: 20px 16px 16px 16px;
 }}
 
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 12px;
-    top: -6px;
-    padding: 0 6px;
+    left: 14px;
+    top: -10px;
+    padding: 2px 8px;
     background-color: {BG2};
-    color: {TEXT2};
+    color: {TEXT3};
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
 }}
 
-/* ─── Inputs ──────────────────────────────────────────────────────────────── */
+/* ── Inputs ──────────────────────────────────────────────── */
 QLineEdit {{
     background-color: {BG3};
     border: 1px solid {BORDER};
     border-radius: 4px;
-    padding: 7px 10px;
+    padding: 8px 10px;
     color: {TEXT1};
     font-size: 12px;
     selection-background-color: {ACCENT};
+    selection-color: #000;
 }}
 
 QLineEdit:focus {{
     border: 1px solid {ACCENT};
-    background-color: #1C1C1C;
 }}
 
-QLineEdit::placeholder {{
+QLineEdit:disabled {{
     color: {TEXT3};
+    border-color: #1E1E1E;
 }}
 
 QSpinBox {{
     background-color: {BG3};
     border: 1px solid {BORDER};
     border-radius: 4px;
-    padding: 6px 8px;
+    padding: 7px 8px;
     color: {TEXT1};
     font-size: 12px;
+    min-width: 64px;
 }}
 
 QSpinBox:focus {{
@@ -135,28 +162,34 @@ QSpinBox:focus {{
 QSpinBox::up-button, QSpinBox::down-button {{
     background: {BG3};
     border: none;
-    width: 18px;
+    width: 20px;
+    border-radius: 0px;
+}}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
+    background: #2E2E2E;
 }}
 
 QSpinBox::up-arrow {{
-    image: none;
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
     border-bottom: 5px solid {TEXT2};
+    width: 0; height: 0;
 }}
 
 QSpinBox::down-arrow {{
-    image: none;
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
     border-top: 5px solid {TEXT2};
+    width: 0; height: 0;
 }}
 
-/* ─── Checkboxes ──────────────────────────────────────────────────────────── */
+/* ── Checkboxes ──────────────────────────────────────────── */
 QCheckBox {{
     color: {TEXT2};
     font-size: 12px;
-    spacing: 8px;
+    spacing: 10px;
+    background: transparent;
 }}
 
 QCheckBox:hover {{
@@ -164,185 +197,198 @@ QCheckBox:hover {{
 }}
 
 QCheckBox::indicator {{
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     border: 1px solid {BORDER};
     border-radius: 3px;
-    background: {BG3};
+    background-color: {BG3};
+}}
+
+QCheckBox::indicator:hover {{
+    border-color: {TEXT2};
 }}
 
 QCheckBox::indicator:checked {{
     background-color: {ACCENT};
-    border: 1px solid {ACCENT};
+    border-color: {ACCENT};
+}}
+
+/* Simulation coche via border trick */
+QCheckBox::indicator:checked {{
     image: none;
 }}
 
-QCheckBox::indicator:checked::after {{
-    content: "✓";
+/* ── Labels ──────────────────────────────────────────────── */
+QLabel {{
+    background: transparent;
 }}
 
-/* ─── Buttons ─────────────────────────────────────────────────────────────── */
-QPushButton {{
-    background-color: {BG3};
-    color: {TEXT1};
-    border: 1px solid {BORDER};
-    border-radius: 4px;
-    padding: 7px 16px;
-    font-size: 12px;
-    font-weight: 500;
-}}
-
-QPushButton:hover {{
-    background-color: #2A2A2A;
-    border-color: #3A3A3A;
-}}
-
-QPushButton:pressed {{
-    background-color: #141414;
-}}
-
-QPushButton#btn_run {{
-    background-color: {ACCENT};
-    color: #0B0B0B;
-    border: none;
-    border-radius: 4px;
-    padding: 9px 28px;
-    font-size: 13px;
-    font-weight: 700;
+QLabel#form_label {{
+    color: {TEXT2};
+    font-size: 11px;
     letter-spacing: 0.5px;
-}}
-
-QPushButton#btn_run:hover {{
-    background-color: #D9BC82;
-}}
-
-QPushButton#btn_run:pressed {{
-    background-color: #B8986A;
-}}
-
-QPushButton#btn_run:disabled {{
-    background-color: #2A2420;
-    color: {TEXT3};
-}}
-
-QPushButton#btn_cancel {{
-    background-color: transparent;
-    color: {TEXT2};
-    border: 1px solid {BORDER};
-    border-radius: 4px;
-    padding: 9px 18px;
-    font-size: 12px;
-}}
-
-QPushButton#btn_cancel:hover {{
-    background-color: #1E1414;
-    color: {ERROR};
-    border-color: {ERROR};
-}}
-
-QPushButton#btn_cancel:disabled {{
-    color: {TEXT3};
-    border-color: {TEXT3};
-}}
-
-QPushButton#btn_browse {{
-    background-color: transparent;
-    color: {TEXT2};
-    border: 1px solid {BORDER};
-    border-radius: 4px;
-    padding: 6px 12px;
-    font-size: 11px;
     min-width: 80px;
-}}
-
-QPushButton#btn_browse:hover {{
-    color: {TEXT1};
-    border-color: {ACCENT};
-    background-color: rgba(200, 169, 110, 0.06);
-}}
-
-/* ─── Progress Bar ────────────────────────────────────────────────────────── */
-QProgressBar {{
-    background-color: {BG3};
-    border: none;
-    border-radius: 2px;
-    height: 3px;
-    text-align: center;
-}}
-
-QProgressBar::chunk {{
-    background-color: {ACCENT};
-    border-radius: 2px;
-}}
-
-#progress_thin {{
-    background-color: {BORDER};
-    border: none;
-    border-radius: 1px;
-    max-height: 2px;
-}}
-
-#progress_thin::chunk {{
-    background-color: {ACCENT};
-    border-radius: 1px;
-}}
-
-/* ─── Log / Console ───────────────────────────────────────────────────────── */
-QTextEdit#console {{
-    background-color: {BG1};
-    color: {TEXT2};
-    border: none;
-    border-top: 1px solid {BORDER};
-    font-family: "Consolas", "JetBrains Mono", "Courier New", monospace;
-    font-size: 11px;
-    padding: 12px;
-    line-height: 1.6;
-}}
-
-/* ─── Labels ──────────────────────────────────────────────────────────────── */
-QLabel#label_section {{
-    color: {TEXT2};
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    font-weight: 600;
-}}
-
-QLabel#stat_value {{
-    color: {TEXT1};
-    font-size: 22px;
-    font-weight: 300;
-    letter-spacing: -0.5px;
-}}
-
-QLabel#stat_label {{
-    color: {TEXT3};
-    font-size: 10px;
-    letter-spacing: 1px;
 }}
 
 QLabel#progress_folder {{
     color: {ACCENT};
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.3px;
+    background: transparent;
 }}
 
 QLabel#progress_file {{
     color: {TEXT2};
     font-size: 11px;
+    background: transparent;
 }}
 
-/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
+QLabel#hint_label {{
+    color: {TEXT3};
+    font-size: 11px;
+    line-height: 1.5;
+    background: transparent;
+}}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+QPushButton {{
+    background-color: {BG3};
+    color: {TEXT1};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 7px 14px;
+    font-size: 12px;
+}}
+
+QPushButton:hover {{
+    background-color: #2C2C2C;
+    border-color: #3A3A3A;
+}}
+
+QPushButton:pressed {{
+    background-color: {BG1};
+}}
+
+/* ── LANCER ─────────────────────────────────────────────── */
+QPushButton#btn_run {{
+    background-color: {ACCENT};
+    color: #0D0D0D;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 32px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    min-width: 120px;
+    min-height: 38px;
+}}
+
+QPushButton#btn_run:hover {{
+    background-color: #D4B87A;
+}}
+
+QPushButton#btn_run:pressed {{
+    background-color: #B8976A;
+}}
+
+QPushButton#btn_run:disabled {{
+    background-color: #2E2820;
+    color: #504030;
+    border: 1px solid #3A3020;
+}}
+
+/* ── ANNULER ─────────────────────────────────────────────── */
+QPushButton#btn_cancel {{
+    background-color: transparent;
+    color: {TEXT3};
+    border: 1px solid {BORDER};
+    border-radius: 5px;
+    padding: 10px 20px;
+    font-size: 12px;
+    min-height: 38px;
+}}
+
+QPushButton#btn_cancel:hover:enabled {{
+    color: {ERROR};
+    border-color: {ERROR};
+    background-color: rgba(174,107,107,0.08);
+}}
+
+QPushButton#btn_cancel:disabled {{
+    color: {TEXT3};
+    border-color: #1E1E1E;
+}}
+
+/* ── Browse ──────────────────────────────────────────────── */
+QPushButton#btn_browse {{
+    background-color: transparent;
+    color: {TEXT2};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 7px 14px;
+    font-size: 11px;
+    min-width: 88px;
+}}
+
+QPushButton#btn_browse:hover {{
+    color: {TEXT1};
+    border-color: {ACCENT};
+    background-color: rgba(200,169,110,0.05);
+}}
+
+/* ── Action bar ──────────────────────────────────────────── */
+QWidget#action_bar {{
+    background-color: #0F0F0F;
+    border-top: 1px solid {BORDER};
+    border-bottom: 1px solid {BORDER};
+    min-height: 62px;
+    max-height: 62px;
+}}
+
+/* ── Progress card ───────────────────────────────────────── */
+QWidget#progress_card {{
+    background-color: {BG2};
+    border-bottom: 1px solid {BORDER};
+}}
+
+/* ── Progress bar ────────────────────────────────────────── */
+QProgressBar#progress_bar {{
+    background-color: {BORDER};
+    border: none;
+    border-radius: 1px;
+    max-height: 2px;
+    min-height: 2px;
+    text-align: left;
+}}
+
+QProgressBar#progress_bar::chunk {{
+    background-color: {ACCENT};
+    border-radius: 1px;
+}}
+
+/* ── Console ─────────────────────────────────────────────── */
+QTextEdit#console {{
+    background-color: {BG1};
+    border: none;
+    border-top: 1px solid {BORDER};
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 11px;
+    padding: 10px 14px;
+    color: {TEXT2};
+}}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
 QScrollBar:vertical {{
     background: transparent;
-    width: 6px;
+    width: 5px;
     margin: 0;
+    border: none;
 }}
 
 QScrollBar::handle:vertical {{
     background: {BG3};
-    border-radius: 3px;
-    min-height: 30px;
+    border-radius: 2px;
+    min-height: 24px;
 }}
 
 QScrollBar::handle:vertical:hover {{
@@ -350,22 +396,30 @@ QScrollBar::handle:vertical:hover {{
 }}
 
 QScrollBar::add-line:vertical,
-QScrollBar::sub-line:vertical,
-QScrollBar::add-page:vertical,
-QScrollBar::sub-page:vertical {{
-    background: transparent;
+QScrollBar::sub-line:vertical {{
     height: 0;
+    background: transparent;
 }}
 
-/* ─── Separator ───────────────────────────────────────────────────────────── */
-QFrame[frameShape="4"], QFrame[frameShape="5"] {{
-    color: {BORDER};
-    background: {BORDER};
+QScrollBar:horizontal {{
+    height: 5px;
+    background: transparent;
+}}
+
+QScrollBar::handle:horizontal {{
+    background: {BG3};
+    border-radius: 2px;
+}}
+
+/* ── Separator ───────────────────────────────────────────── */
+QFrame#hline {{
+    background-color: {BORDER};
     border: none;
     max-height: 1px;
+    min-height: 1px;
 }}
 
-/* ─── Tooltips ────────────────────────────────────────────────────────────── */
+/* ── Tooltip ─────────────────────────────────────────────── */
 QToolTip {{
     background-color: {BG2};
     color: {TEXT1};

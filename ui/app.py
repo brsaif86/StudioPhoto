@@ -1,23 +1,23 @@
 """
-ui/app.py — StudioPhoto v2 — Dark professional interface
-=========================================================
-Aesthetic: Capture One × DaVinci Resolve
-Layout: sidebar nav · content panel · progress card · log console
+ui/app.py — StudioPhoto v2.1
+Fixes: pas de setStyleSheet() inline (conflits QSS), layout propre,
+       group boxes non coupées, btn_run toujours visible.
 """
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QProgressBar, QTextEdit, QLabel,
-    QFrame, QSizePolicy, QStackedWidget, QSpacerItem,
+    QFrame, QSizePolicy, QStackedWidget, QScrollArea,
+    QMessageBox,
 )
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize
-from PySide6.QtGui import QFont, QColor, QPalette, QTextCharFormat, QTextCursor
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor, QFont
 
 from core import config as cfg_store
 from ui.grade_panel import GradePanel
 from ui.rename_panel import RenamePanel
 from ui.workers import GradeWorker, RenameWorker
-from ui.style import QSS, ACCENT, SUCCESS, ERROR, SKIP, TEXT2, TEXT3, BG2
+from ui.style import QSS, ACCENT, SUCCESS, ERROR, SKIP, TEXT2, TEXT3
 from version import FULL_NAME, __version__
 
 
@@ -26,13 +26,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._worker = None
         self._cfg = cfg_store.load()
-        self._done = 0
-        self._total = 0
-        self._speed = 0.0
 
         self.setWindowTitle(FULL_NAME)
-        self.resize(940, 700)
-        self.setMinimumSize(820, 600)
+        self.resize(1000, 720)
+        self.setMinimumSize(860, 620)
         self.setStyleSheet(QSS)
 
         self._build_ui()
@@ -43,39 +40,46 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         root = QWidget()
+        root.setObjectName("root")
         self.setCentralWidget(root)
-        layout = QHBoxLayout(root)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        h = QHBoxLayout(root)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(0)
+        h.addWidget(self._build_sidebar())
+        h.addWidget(self._build_main_column(), stretch=1)
 
-        layout.addWidget(self._build_sidebar())
-        layout.addWidget(self._build_main(), stretch=1)
+    # ── Sidebar ────────────────────────────────────────────────────────────────
 
     def _build_sidebar(self) -> QWidget:
-        sidebar = QWidget()
-        sidebar.setObjectName("sidebar")
-        v = QVBoxLayout(sidebar)
+        sb = QWidget()
+        sb.setObjectName("sidebar")
+        sb.setFixedWidth(190)
+        v = QVBoxLayout(sb)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # Logo
+        # Logo block
+        logo_w = QWidget()
+        lv = QVBoxLayout(logo_w)
+        lv.setContentsMargins(20, 28, 20, 20)
+        lv.setSpacing(4)
         logo = QLabel("STUDIO")
         logo.setObjectName("app_logo")
-        ver = QLabel(f"v{__version__}")
+        ver  = QLabel(f"v{__version__}")
         ver.setObjectName("app_version")
-        v.addWidget(logo)
-        v.addWidget(ver)
-
-        # Separator
+        lv.addWidget(logo)
+        lv.addWidget(ver)
+        v.addWidget(logo_w)
         v.addWidget(self._hline())
 
-        # Nav buttons
+        # Nav
         self.nav_grade  = QPushButton("ÉTALONNAGE")
         self.nav_rename = QPushButton("RENOMMAGE")
-        for btn in (self.nav_grade, self.nav_rename):
+        for btn, name in [(self.nav_grade, "nav_grade"), (self.nav_rename, "nav_rename")]:
+            btn.setObjectName(name)
             btn.setCheckable(True)
-            btn.setObjectName(f"nav_{'grade' if btn is self.nav_grade else 'rename'}")
             btn.setCursor(Qt.PointingHandCursor)
+            btn.setFlat(True)
             v.addWidget(btn)
 
         self.nav_grade.setChecked(True)
@@ -83,153 +87,159 @@ class MainWindow(QMainWindow):
         self.nav_rename.clicked.connect(lambda: self._switch(1))
 
         v.addStretch()
-
-        # Stats at bottom of sidebar
         v.addWidget(self._hline())
-        v.addWidget(self._build_sidebar_stats())
+        v.addWidget(self._build_stats_block())
+        return sb
 
-        return sidebar
-
-    def _build_sidebar_stats(self) -> QWidget:
+    def _build_stats_block(self) -> QWidget:
         w = QWidget()
         v = QVBoxLayout(w)
-        v.setContentsMargins(16, 16, 16, 20)
-        v.setSpacing(12)
-
-        for attr, val_text, lbl_text in (
-            ("stat_processed", "0", "TRAITÉES"),
-            ("stat_skipped",   "0", "IGNORÉES"),
-            ("stat_errors",    "0", "ERREURS"),
-        ):
-            row = QWidget()
-            h = QHBoxLayout(row)
-            h.setContentsMargins(0, 0, 0, 0)
-            val = QLabel(val_text)
-            val.setObjectName("stat_value")
-            val.setFont(QFont("Segoe UI", 18, QFont.Light))
-            lbl = QLabel(lbl_text)
-            lbl.setObjectName("stat_label")
-            lbl.setFont(QFont("Segoe UI", 9))
-            h.addWidget(val)
-            h.addStretch()
-            h.addWidget(lbl, alignment=Qt.AlignBottom)
-            v.addWidget(row)
-            setattr(self, attr, val)
-
+        v.setContentsMargins(20, 18, 20, 24)
+        v.setSpacing(14)
+        self.stat_processed = self._stat_row(v, "TRAITÉES")
+        self.stat_skipped   = self._stat_row(v, "IGNORÉES")
+        self.stat_errors    = self._stat_row(v, "ERREURS")
         return w
 
-    def _build_main(self) -> QWidget:
-        main = QWidget()
-        v = QVBoxLayout(main)
+    def _stat_row(self, parent_layout, label_text: str) -> QLabel:
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        val = QLabel("0")
+        val.setObjectName("stat_value")
+        val.setFont(QFont("Segoe UI", 19, QFont.Light))
+        lbl = QLabel(label_text)
+        lbl.setObjectName("stat_label")
+        lbl.setFont(QFont("Segoe UI", 9))
+        h.addWidget(val)
+        h.addStretch()
+        h.addWidget(lbl, alignment=Qt.AlignBottom)
+        parent_layout.addWidget(row)
+        return val
+
+    # ── Main column ────────────────────────────────────────────────────────────
+
+    def _build_main_column(self) -> QWidget:
+        col = QWidget()
+        col.setObjectName("content_area")
+        v = QVBoxLayout(col)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # ── Content panels ───────────────────────────────────────────────────
+        # Scrollable content area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        scroll_content = QWidget()
+        sc = QVBoxLayout(scroll_content)
+        sc.setContentsMargins(32, 28, 32, 24)
+        sc.setSpacing(0)
+
         self.stack = QStackedWidget()
         self.grade_panel  = GradePanel()
         self.rename_panel = RenamePanel()
         self.stack.addWidget(self.grade_panel)
         self.stack.addWidget(self.rename_panel)
+        sc.addWidget(self.stack)
+        sc.addStretch()
 
-        content_wrap = QWidget()
-        cw = QVBoxLayout(content_wrap)
-        cw.setContentsMargins(28, 24, 28, 20)
-        cw.addWidget(self.stack)
-        cw.addStretch()
+        scroll.setWidget(scroll_content)
+        v.addWidget(scroll, stretch=1)
 
-        # ── Action bar ────────────────────────────────────────────────────────
-        action_bar = self._build_action_bar()
+        # Action bar — widget dédié avec objectName pour le QSS
+        v.addWidget(self._build_action_bar())
 
-        # ── Progress card ────────────────────────────────────────────────────
+        # Progress card (masqué par défaut)
         self.progress_card = self._build_progress_card()
         self.progress_card.setVisible(False)
+        v.addWidget(self.progress_card)
 
-        # ── Log console ───────────────────────────────────────────────────────
+        # Console
         self.console = QTextEdit()
         self.console.setObjectName("console")
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(160)
+        self.console.setMinimumHeight(150)
         self.console.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        v.addWidget(content_wrap, stretch=0)
-        v.addWidget(action_bar)
-        v.addWidget(self.progress_card)
         v.addWidget(self.console, stretch=1)
 
-        return main
+        return col
 
     def _build_action_bar(self) -> QWidget:
         bar = QWidget()
-        bar.setStyleSheet(f"background-color: #0F0F0F; border-top: 1px solid #1E1E1E;")
+        bar.setObjectName("action_bar")
+        bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        bar.setFixedHeight(62)
+
         h = QHBoxLayout(bar)
-        h.setContentsMargins(28, 12, 28, 12)
+        h.setContentsMargins(32, 12, 32, 12)
         h.setSpacing(10)
 
-        self.btn_run    = QPushButton("▶   LANCER")
-        self.btn_cancel = QPushButton("ANNULER")
+        self.btn_run = QPushButton("▶   LANCER")
         self.btn_run.setObjectName("btn_run")
+        self.btn_run.setCursor(Qt.PointingHandCursor)
+
+        self.btn_cancel = QPushButton("ANNULER")
         self.btn_cancel.setObjectName("btn_cancel")
         self.btn_cancel.setEnabled(False)
-        self.btn_run.setCursor(Qt.PointingHandCursor)
         self.btn_cancel.setCursor(Qt.PointingHandCursor)
-        self.btn_run.setFixedHeight(38)
-        self.btn_cancel.setFixedHeight(38)
 
         self.btn_run.clicked.connect(self._on_run)
         self.btn_cancel.clicked.connect(self._on_cancel)
 
+        self.lbl_speed = QLabel("")
+        self.lbl_speed.setFont(QFont("Segoe UI", 10))
+
         h.addWidget(self.btn_run)
         h.addWidget(self.btn_cancel)
         h.addStretch()
-
-        # Inline speed indicator
-        self.lbl_speed = QLabel("")
-        self.lbl_speed.setStyleSheet(f"color: {TEXT3}; font-size: 11px;")
         h.addWidget(self.lbl_speed)
-
         return bar
 
     def _build_progress_card(self) -> QWidget:
         card = QWidget()
-        card.setStyleSheet(f"background-color: {BG2}; border-bottom: 1px solid #1E1E1E;")
+        card.setObjectName("progress_card")
         v = QVBoxLayout(card)
-        v.setContentsMargins(28, 14, 28, 14)
-        v.setSpacing(8)
+        v.setContentsMargins(32, 12, 32, 12)
+        v.setSpacing(6)
 
-        # Top row: folder + ETA
-        top = QHBoxLayout()
-        folder_icon = QLabel("📁")
-        folder_icon.setStyleSheet("font-size: 12px;")
+        # Ligne 1 : dossier + ETA
+        row1 = QHBoxLayout()
+        folder_ico = QLabel("▸")
+        folder_ico.setFont(QFont("Segoe UI", 11))
         self.lbl_folder = QLabel("—")
         self.lbl_folder.setObjectName("progress_folder")
-        top.addWidget(folder_icon)
-        top.addWidget(self.lbl_folder)
-        top.addStretch()
         self.lbl_eta = QLabel("")
-        self.lbl_eta.setStyleSheet(f"color: {TEXT3}; font-size: 11px;")
-        top.addWidget(self.lbl_eta)
-        v.addLayout(top)
+        self.lbl_eta.setFont(QFont("Segoe UI", 10))
 
-        # Progress bar (thin)
+        row1.addWidget(folder_ico)
+        row1.addWidget(self.lbl_folder)
+        row1.addStretch()
+        row1.addWidget(self.lbl_eta)
+        v.addLayout(row1)
+
+        # Barre de progression 2px
         self.progress = QProgressBar()
-        self.progress.setObjectName("progress_thin")
-        self.progress.setFixedHeight(2)
+        self.progress.setObjectName("progress_bar")
         self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(2)
         v.addWidget(self.progress)
 
-        # Bottom row: file + counter
-        bottom = QHBoxLayout()
-        self.lbl_file = QLabel("—")
+        # Ligne 2 : fichier + compteur + %
+        row2 = QHBoxLayout()
+        self.lbl_file    = QLabel("—")
         self.lbl_file.setObjectName("progress_file")
-        bottom.addWidget(self.lbl_file)
-        bottom.addStretch()
         self.lbl_counter = QLabel("")
-        self.lbl_counter.setStyleSheet(f"color: {TEXT2}; font-size: 12px; font-weight: 600;")
+        self.lbl_counter.setFont(QFont("Segoe UI", 11, QFont.DemiBold))
         self.lbl_pct = QLabel("")
-        self.lbl_pct.setStyleSheet(f"color: {TEXT3}; font-size: 11px; margin-left: 8px;")
-        bottom.addWidget(self.lbl_counter)
-        bottom.addWidget(self.lbl_pct)
-        v.addLayout(bottom)
+        self.lbl_pct.setFont(QFont("Segoe UI", 10))
+
+        row2.addWidget(self.lbl_file)
+        row2.addStretch()
+        row2.addWidget(self.lbl_counter)
+        row2.addWidget(self.lbl_pct)
+        v.addLayout(row2)
 
         return card
 
@@ -249,7 +259,6 @@ class MainWindow(QMainWindow):
             self._start_renaming()
 
     def _start_grading(self) -> None:
-        from PySide6.QtWidgets import QMessageBox
         params = self.grade_panel.get_params()
         if not params["folder"] or not params["folder"].is_dir():
             QMessageBox.critical(self, "Erreur", "Choisis un dossier source valide.")
@@ -259,10 +268,8 @@ class MainWindow(QMainWindow):
         self._log(f"  Source    : {params['folder']}", TEXT2)
         self._log(f"  Sortie    : {params['output_dir'] or '_output (par dossier)'}", TEXT2)
         self._log(
-            f"  Processus : {params['workers']}  ·  "
-            f"Suffixe : {params['suffix']}  ·  "
-            f"Récursif : {'oui' if params['recursive'] else 'non'}",
-            TEXT2
+            f"  Processus : {params['workers']}  ·  Suffixe : {params['suffix']}  ·  "
+            f"Récursif : {'oui' if params['recursive'] else 'non'}", TEXT2
         )
 
         worker = GradeWorker(params)
@@ -275,7 +282,6 @@ class MainWindow(QMainWindow):
         self._start_worker(worker)
 
     def _start_renaming(self) -> None:
-        from PySide6.QtWidgets import QMessageBox
         params = self.rename_panel.get_params()
         if not params["base"] or not params["base"].is_dir():
             QMessageBox.critical(self, "Erreur", "Choisis un dossier de base valide.")
@@ -303,20 +309,18 @@ class MainWindow(QMainWindow):
 
     def _start_worker(self, worker) -> None:
         self._worker = worker
-        self._done = 0
-        self._total = 0
         self._reset_stats()
         self.btn_run.setEnabled(False)
         self.btn_cancel.setEnabled(True)
+        self.lbl_speed.setText("")
         self.progress.setValue(0)
         self.progress.setMaximum(1)
-        self.progress_card.setVisible(True)
         self.lbl_folder.setText("Démarrage…")
         self.lbl_file.setText("")
         self.lbl_counter.setText("")
         self.lbl_pct.setText("")
         self.lbl_eta.setText("")
-        self.lbl_speed.setText("")
+        self.progress_card.setVisible(True)
         worker.start()
 
     def _on_cancel(self) -> None:
@@ -327,14 +331,12 @@ class MainWindow(QMainWindow):
     # ── Progress callbacks ────────────────────────────────────────────────────
 
     def _update_progress(self, done: int, total: int) -> None:
-        self._done = done
-        self._total = total
         self.progress.setMaximum(max(total, 1))
         self.progress.setValue(done)
         if total > 0:
             pct = int(done / total * 100)
             self.lbl_counter.setText(f"{done} / {total}")
-            self.lbl_pct.setText(f"{pct}%")
+            self.lbl_pct.setText(f"  {pct} %")
 
     def _update_current(self, folder: str, file: str) -> None:
         if folder:
@@ -343,7 +345,6 @@ class MainWindow(QMainWindow):
             self.lbl_file.setText(file)
 
     def _update_speed(self, speed: float) -> None:
-        self._speed = speed
         if speed > 0:
             self.lbl_speed.setText(f"{speed:.1f} img/s")
 
@@ -364,18 +365,16 @@ class MainWindow(QMainWindow):
         self._log_sep()
         status = "Annulé" if result.get("cancelled") else "Terminé"
         parts  = [f"{result['ok']} traitée(s)"]
-        if result["skipped"]:
-            parts.append(f"{result['skipped']} ignorée(s)")
-        if result["errors"]:
-            parts.append(f"{result['errors']} erreur(s)")
-        self._log(f"  {status} · " + "  ·  ".join(parts), ACCENT)
+        if result["skipped"]:  parts.append(f"{result['skipped']} ignorée(s)")
+        if result["errors"]:   parts.append(f"{result['errors']} erreur(s)")
+        self._log(f"  {status}  ·  " + "  ·  ".join(parts), ACCENT)
         self._log_sep()
         self._finish()
 
     def _on_rename_done(self, total_renamed: int, dry_run: bool) -> None:
         self._log_sep()
         verb = "à renommer (aperçu)" if dry_run else "renommée(s)"
-        self._log(f"  Terminé · {total_renamed} image(s) {verb}.", ACCENT)
+        self._log(f"  Terminé  ·  {total_renamed} image(s) {verb}.", ACCENT)
         self._log_sep()
         self._finish()
 
@@ -383,46 +382,36 @@ class MainWindow(QMainWindow):
         self._worker = None
         self.btn_run.setEnabled(True)
         self.btn_cancel.setEnabled(False)
-        self.lbl_eta.setText("")
         self.lbl_file.setText("Terminé")
-        QTimer.singleShot(3000, lambda: self.progress_card.setVisible(False))
+        self.lbl_eta.setText("")
+        QTimer.singleShot(4000, lambda: self.progress_card.setVisible(False))
 
-    # ── Logging helpers ───────────────────────────────────────────────────────
+    # ── Log helpers ───────────────────────────────────────────────────────────
 
     def _log_auto(self, text: str) -> None:
-        """Détecte la nature du message et colore en conséquence."""
-        if "✓" in text:
-            self._log(text, SUCCESS)
-        elif "✗" in text:
-            self._log(text, ERROR)
-        elif "⏭" in text:
-            self._log(text, SKIP)
-        else:
-            self._log(text, TEXT2)
+        if "✓" in text:   self._log(text, SUCCESS)
+        elif "✗" in text: self._log(text, ERROR)
+        elif "⏭" in text: self._log(text, SKIP)
+        else:              self._log(text, TEXT2)
 
     def _log(self, text: str, color: str = TEXT2) -> None:
         fmt = QTextCharFormat()
         fmt.setForeground(QColor(color))
-        cursor = self.console.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        cursor.insertText(text + "\n", fmt)
-        self.console.setTextCursor(cursor)
+        cur = self.console.textCursor()
+        cur.movePosition(QTextCursor.End)
+        cur.insertText(text + "\n", fmt)
+        self.console.setTextCursor(cur)
         self.console.ensureCursorVisible()
 
     def _log_sep(self) -> None:
-        fmt = QTextCharFormat()
-        fmt.setForeground(QColor("#2A2A2A"))
-        cursor = self.console.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        cursor.insertText("─" * 64 + "\n", fmt)
-        self.console.setTextCursor(cursor)
+        self._log("─" * 72, "#252525")
 
     def _reset_stats(self) -> None:
         self.stat_processed.setText("0")
         self.stat_skipped.setText("0")
         self.stat_errors.setText("0")
 
-    # ── Persist config ─────────────────────────────────────────────────────────
+    # ── Persist ───────────────────────────────────────────────────────────────
 
     def closeEvent(self, event):
         self.grade_panel.save_config(self._cfg)
@@ -430,10 +419,10 @@ class MainWindow(QMainWindow):
         cfg_store.save(self._cfg)
         super().closeEvent(event)
 
-    # ── Helpers ────────────────────────────────────────────────────────────────
-
     @staticmethod
     def _hline() -> QFrame:
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        return line
+        f = QFrame()
+        f.setObjectName("hline")
+        f.setFrameShape(QFrame.HLine)
+        f.setFixedHeight(1)
+        return f
