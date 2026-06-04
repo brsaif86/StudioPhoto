@@ -17,6 +17,7 @@ from core import config as cfg_store
 from ui.grade_panel import GradePanel
 from ui.rename_panel import RenamePanel
 from ui.workers import GradeWorker, RenameWorker
+from version import FULL_NAME
 
 
 class MainWindow(QMainWindow):
@@ -25,7 +26,7 @@ class MainWindow(QMainWindow):
         self._worker = None
         self._cfg = cfg_store.load()
 
-        self.setWindowTitle("Studio Photo — Étalonnage & Renommage")
+        self.setWindowTitle(f"{FULL_NAME} — Étalonnage & Renommage")
         self.resize(820, 680)
         self.setMinimumSize(700, 580)
 

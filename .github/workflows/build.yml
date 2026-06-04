@@ -13,14 +13,17 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: StudioPhoto-windows-x86_64.exe
+            artifact_suffix: windows-x86_64
+            ext: .exe
 
           - os: macos-13          # Intel x86_64 — seul runner Intel dispo sur GitHub
-            artifact: StudioPhoto-macos-intel
-            continue_on_error: true   # ne bloque pas la release si runner saturé
+            artifact_suffix: macos-intel
+            ext: ""
+            continue_on_error: true
 
           - os: macos-14          # Apple Silicon arm64
-            artifact: StudioPhoto-macos-silicon
+            artifact_suffix: macos-silicon
+            ext: ""
 
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.continue_on_error == true }}
@@ -39,35 +42,47 @@ jobs:
       - name: Install dependencies
         run: pip install Pillow numpy PySide6 pyinstaller psutil
 
-      # ── Génération icône (si app_icon.png présent) ──────────────────────────
-      - name: Generate ICO (Windows)
+      # ── Lecture de la version ───────────────────────────────────────────────
+      - name: Read version (Windows)
         if: runner.os == 'Windows'
         run: |
-          if (Test-Path app_icon.png) { python make_ico.py }
+          $v = python -c "from version import __version__; print(__version__)"
+          echo "APP_VERSION=$v" >> $env:GITHUB_ENV
+          echo "EXE_NAME=StudioPhoto-$v-${{ matrix.artifact_suffix }}" >> $env:GITHUB_ENV
 
-      - name: Generate ICNS (macOS)
+      - name: Read version (macOS)
         if: runner.os == 'macOS'
         run: |
-          if [ -f app_icon.png ]; then python make_ico.py; fi
+          V=$(python -c "from version import __version__; print(__version__)")
+          echo "APP_VERSION=$V" >> $GITHUB_ENV
+          echo "EXE_NAME=StudioPhoto-${V}-${{ matrix.artifact_suffix }}" >> $GITHUB_ENV
+
+      # ── Génération icône ────────────────────────────────────────────────────
+      - name: Generate ICO (Windows)
+        if: runner.os == 'Windows'
+        run: if (Test-Path app_icon.png) { python make_ico.py }
+
+      - name: Generate ICO (macOS)
+        if: runner.os == 'macOS'
+        run: if [ -f app_icon.png ]; then python make_ico.py; fi
 
       # ── Build Windows ───────────────────────────────────────────────────────
-      # Note: `;` est un séparateur de commandes PowerShell — on utilise `:`
-      # (supporté sur toutes plateformes depuis PyInstaller 6.0).
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: |
-          $args = @(
+          $buildArgs = @(
             "--onefile", "--windowed",
-            "--name", "StudioPhoto",
+            "--name", $env:EXE_NAME,
             "--add-data", "core:core",
-            "--add-data", "ui:ui"
+            "--add-data", "ui:ui",
+            "--add-data", "version.py:."
           )
           if (Test-Path app_icon.ico) {
-            $args += "--icon", "app_icon.ico"
-            $args += "--add-data", "app_icon.ico:."
+            $buildArgs += "--icon", "app_icon.ico"
+            $buildArgs += "--add-data", "app_icon.ico:."
           }
-          $args += "ui_entry.py"
-          python -m PyInstaller @args
+          $buildArgs += "ui_entry.py"
+          python -m PyInstaller @buildArgs
 
       # ── Build macOS ─────────────────────────────────────────────────────────
       - name: Build (macOS)
@@ -76,32 +91,23 @@ jobs:
           ICON_ARGS=""
           if [ -f app_icon.ico ]; then
             ICON_ARGS="--icon app_icon.ico --add-data app_icon.ico:."
-          elif [ -f app_icon.png ]; then
-            ICON_ARGS="--add-data app_icon.png:."
           fi
           python -m PyInstaller \
             --onefile \
             --windowed \
-            --name "StudioPhoto" \
+            --name "$EXE_NAME" \
             --add-data "core:core" \
             --add-data "ui:ui" \
+            --add-data "version.py:." \
             $ICON_ARGS \
             ui_entry.py
 
-      # ── Rename & upload ────────────────────────────────────────────────────
-      - name: Rename artifact (Windows)
-        if: runner.os == 'Windows'
-        run: mv dist\StudioPhoto.exe dist\${{ matrix.artifact }}
-
-      - name: Rename artifact (macOS)
-        if: runner.os == 'macOS'
-        run: mv dist/StudioPhoto dist/${{ matrix.artifact }}
-
+      # ── Upload ────────────────────────────────────────────────────────────
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: ${{ env.EXE_NAME }}${{ matrix.ext }}
+          path: dist/${{ env.EXE_NAME }}${{ matrix.ext }}
           retention-days: 30
 
   # ── Release GitHub automatique sur tag v* ─────────────────────────────────

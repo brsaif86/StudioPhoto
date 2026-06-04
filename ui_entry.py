@@ -15,10 +15,12 @@ if __name__ == "__main__":
     from PySide6.QtWidgets import QApplication
     from PySide6.QtGui import QIcon
     from ui.app import MainWindow
+    from version import APP_NAME, __version__
 
     app = QApplication(sys.argv)
-    app.setApplicationName("StudioPhoto")
-    app.setOrganizationName("StudioPhoto")
+    app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(__version__)
+    app.setOrganizationName(APP_NAME)
 
     # Icône application (PNG ou ICO selon ce qui est disponible)
     _base = Path(__file__).parent
