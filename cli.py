@@ -142,8 +142,10 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--no-skip", dest="skip", action="store_false")
     g.add_argument("--workers", "-w", type=int, default=default_workers())
     g.add_argument("--quality", "-q", type=int, default=DEFAULT_QUALITY)
-    g.add_argument("--coherent", "-c", action="store_true", default=False,
-                   help="Mode série cohérente : profil moyen/dossier (rendu uniforme)")
+    g.add_argument("--coherent", "-c", dest="coherent", action="store_true", default=True,
+                   help="Mode série cohérente : profil moyen/dossier (défaut : activé)")
+    g.add_argument("--no-coherent", dest="coherent", action="store_false",
+                   help="Désactiver le mode série cohérente (étalonnage par image)")
 
     # rename
     r = sub.add_parser("rename", help="Renommage séquentiel par dossier")

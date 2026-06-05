@@ -19,7 +19,7 @@ def _defaults() -> dict:
         "grade_suffix":        "_graded",
         "grade_recursive":     True,
         "grade_skip":          True,
-        "grade_coherent":      False,
+        "grade_coherent":      True,    # série cohérente activée par défaut
         "grade_workers":       default_workers(),   # 60 % des coeurs physiques
         "grade_quality":       95,
         "rename_base":         "",

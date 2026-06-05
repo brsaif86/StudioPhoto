@@ -93,6 +93,7 @@ class GradePanel(QWidget):
         )
         self.recursive_cb.setChecked(True)
         self.skip_cb.setChecked(True)
+        self.coherent_cb.setChecked(True)   # activé par défaut
 
         ol.addWidget(self.recursive_cb, 0, 3)
         ol.addWidget(self.skip_cb,      1, 3)
@@ -135,7 +136,7 @@ class GradePanel(QWidget):
         self.suffix_edit.setText(cfg.get("grade_suffix", DEFAULT_SUFFIX))
         self.recursive_cb.setChecked(cfg.get("grade_recursive", True))
         self.skip_cb.setChecked(cfg.get("grade_skip", True))
-        self.coherent_cb.setChecked(cfg.get("grade_coherent", False))
+        self.coherent_cb.setChecked(cfg.get("grade_coherent", True))
         self.workers_spin.setValue(cfg.get("grade_workers", default_workers()))
         self.quality_spin.setValue(cfg.get("grade_quality", DEFAULT_QUALITY))
 

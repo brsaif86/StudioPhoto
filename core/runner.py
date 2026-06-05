@@ -21,7 +21,7 @@ def run_grade_batch(
     skip_existing: bool = True,
     workers: int = 6,
     quality: int = DEFAULT_QUALITY,
-    coherent_series: bool = False,
+    coherent_series: bool = True,
     on_log: Callable[[str], None] = print,
     on_progress: Callable[[int, int], None] = None,
     on_current: Callable[[str, str], None] = None,  # (folder_name, file_name)
