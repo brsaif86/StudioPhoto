@@ -109,19 +109,24 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     elif mean_lum < 0.55:
         arr **= 0.99
 
-    # 7. Neutralisation des blancs adaptative
-    nw_strength = 0.15 if highlight_ratio > 0.25 else 0.30
-    near_white = (
-        (arr[:, :, 0] > 0.75) & (arr[:, :, 1] > 0.75) & (arr[:, :, 2] > 0.70)
-    ).astype(np.float32)
+    # 7. Neutralisation des blancs — protection anti-dominante (bleu/couleur)
+    #    Les pixels très clairs (robe blanche, ciel) sont ramenés fortement vers
+    #    le gris neutre afin qu'ils ne prennent AUCUNE teinte. Le poids monte
+    #    progressivement avec la luminance (rampe 0.72 → 0.92) puis est lissé
+    #    pour éviter tout liseré sur les bords.
+    lum_w = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
+    whiteness = np.clip((lum_w - 0.72) / 0.20, 0.0, 1.0)
 
-    nw_smooth = np.asarray(
-        Image.fromarray((near_white * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(6)),
+    whiteness = np.asarray(
+        Image.fromarray((whiteness * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(4)),
         dtype=np.float32,
     ) / 255.0
 
+    # Neutralisation forte sur les blancs (jusqu'à 0.92 → quasi R=G=B),
+    # adoucie si l'image comporte déjà beaucoup de hautes lumières.
+    max_neutral = 0.85 if highlight_ratio > 0.25 else 0.92
     avg = (arr[:, :, 0] + arr[:, :, 1] + arr[:, :, 2]) / 3.0
-    factor = nw_smooth * nw_strength
+    factor = whiteness * max_neutral
     for c in range(3):
         arr[:, :, c] = arr[:, :, c] * (1 - factor) + avg * factor
 

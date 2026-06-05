@@ -108,6 +108,21 @@ def test_color_grade_deterministic():
 
 # ── apply_bw_grade ────────────────────────────────────────────────────────────
 
+def test_whites_stay_neutral():
+    """Une zone blanche/quasi-blanche ne doit prendre AUCUNE dominante (robe).
+
+    Garantit que l'étalonnage ne fait pas virer le blanc vers le bleu.
+    """
+    for level in (0.88, 0.92, 0.96):
+        white = np.full((48, 48, 3), level, dtype=np.float32)
+        m = analyze_image(white.copy())
+        out = np.asarray(apply_color_grade(white.copy(), m), dtype=np.float32) / 255.0
+        r, g, b = out[..., 0].mean(), out[..., 1].mean(), out[..., 2].mean()
+        # Écart entre canaux quasi nul → pas de teinte
+        assert abs(b - r) < 0.01, f"Cast bleu sur blanc {level}: B-R={b - r:+.4f}"
+        assert abs(r - g) < 0.01, f"Cast sur blanc {level}: R-G={r - g:+.4f}"
+
+
 def test_bw_grade_output_in_range():
     img = make_image(100, 100, 100)
     a = arr01(img)
