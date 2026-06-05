@@ -86,11 +86,17 @@ class GradePanel(QWidget):
         # Colonne droite : cases à cocher
         self.recursive_cb = QCheckBox("Récursif (sous-dossiers)")
         self.skip_cb      = QCheckBox("Ignorer les images déjà traitées (reprise)")
+        self.coherent_cb  = QCheckBox("Uniformiser la série (profil moyen/dossier)")
+        self.coherent_cb.setToolTip(
+            "Calcule un réglage commun par dossier pour un rendu homogène\n"
+            "sur toute la série (corrige les variations d'exposition/couleur)."
+        )
         self.recursive_cb.setChecked(True)
         self.skip_cb.setChecked(True)
 
         ol.addWidget(self.recursive_cb, 0, 3)
         ol.addWidget(self.skip_cb,      1, 3)
+        ol.addWidget(self.coherent_cb,  2, 3)
 
         root.addWidget(opt_box)
 
@@ -120,6 +126,7 @@ class GradePanel(QWidget):
             "skip":       self.skip_cb.isChecked(),
             "workers":    self.workers_spin.value(),
             "quality":    self.quality_spin.value(),
+            "coherent":   self.coherent_cb.isChecked(),
         }
 
     def load_config(self, cfg: dict) -> None:
@@ -128,6 +135,7 @@ class GradePanel(QWidget):
         self.suffix_edit.setText(cfg.get("grade_suffix", DEFAULT_SUFFIX))
         self.recursive_cb.setChecked(cfg.get("grade_recursive", True))
         self.skip_cb.setChecked(cfg.get("grade_skip", True))
+        self.coherent_cb.setChecked(cfg.get("grade_coherent", False))
         self.workers_spin.setValue(cfg.get("grade_workers", default_workers()))
         self.quality_spin.setValue(cfg.get("grade_quality", DEFAULT_QUALITY))
 
@@ -137,5 +145,6 @@ class GradePanel(QWidget):
         cfg["grade_suffix"]    = self.suffix_edit.text().strip()
         cfg["grade_recursive"] = self.recursive_cb.isChecked()
         cfg["grade_skip"]      = self.skip_cb.isChecked()
+        cfg["grade_coherent"]  = self.coherent_cb.isChecked()
         cfg["grade_workers"]   = self.workers_spin.value()
         cfg["grade_quality"]   = self.quality_spin.value()

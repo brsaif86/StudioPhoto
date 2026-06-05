@@ -21,6 +21,7 @@ def run_grade_batch(
     skip_existing: bool = True,
     workers: int = 6,
     quality: int = DEFAULT_QUALITY,
+    coherent_series: bool = False,
     on_log: Callable[[str], None] = print,
     on_progress: Callable[[int, int], None] = None,
     on_current: Callable[[str, str], None] = None,  # (folder_name, file_name)
@@ -32,7 +33,11 @@ def run_grade_batch(
 
     Retourne {"ok": int, "skipped": int, "errors": int, "total": int}.
     """
-    tasks = collect_grade_tasks(folder, suffix, output_dir, recursive, skip_existing, quality)
+    if coherent_series:
+        on_log("  ⚙ Mode série cohérente : calcul du profil moyen par dossier…")
+    tasks = collect_grade_tasks(
+        folder, suffix, output_dir, recursive, skip_existing, quality, coherent_series
+    )
     total = len(tasks)
     if total == 0:
         on_log("  Aucune image JPG trouvée.")

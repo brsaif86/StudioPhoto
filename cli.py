@@ -37,16 +37,18 @@ def cmd_grade(args) -> None:
     print(f"  Récursif  : {'oui' if args.recursive else 'non'}")
     print(f"  Skip      : {'oui' if args.skip else 'non'}")
     print(f"  Processus : {args.workers}")
+    print(f"  Série     : {'cohérente (profil/dossier)' if args.coherent else 'adaptative/image'}")
     print("=" * 60)
 
     result = run_grade_batch(
-        folder       = folder,
-        suffix       = args.suffix,
-        output_dir   = output_dir,
-        recursive    = args.recursive,
-        skip_existing= args.skip,
-        workers      = args.workers,
-        quality      = args.quality,
+        folder         = folder,
+        suffix         = args.suffix,
+        output_dir     = output_dir,
+        recursive      = args.recursive,
+        skip_existing  = args.skip,
+        workers        = args.workers,
+        quality        = args.quality,
+        coherent_series= args.coherent,
     )
 
     print("\n" + "=" * 60)
@@ -93,15 +95,12 @@ def cmd_benchmark(args) -> None:
     print(f"\n  Benchmark — {len(sample)} image(s), dossier : {folder}")
 
     for w in args.workers:
-        # Force skip=False pour mesurer le vrai traitement
-        tasks_no_skip = [(inp, out, False, q) for inp, out, _, q in sample]
-
         import tempfile, os
         from core.grading import _grade_worker
         with tempfile.TemporaryDirectory() as tmpdir:
             tasks_tmp = [
-                (inp, str(Path(tmpdir) / Path(inp).name), False, DEFAULT_QUALITY)
-                for inp, _, _, _ in tasks_no_skip
+                (t[0], str(Path(tmpdir) / Path(t[0]).name), False, DEFAULT_QUALITY, None)
+                for t in sample
             ]
 
             t0 = time.perf_counter()
@@ -143,6 +142,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--no-skip", dest="skip", action="store_false")
     g.add_argument("--workers", "-w", type=int, default=default_workers())
     g.add_argument("--quality", "-q", type=int, default=DEFAULT_QUALITY)
+    g.add_argument("--coherent", "-c", action="store_true", default=False,
+                   help="Mode série cohérente : profil moyen/dossier (rendu uniforme)")
 
     # rename
     r = sub.add_parser("rename", help="Renommage séquentiel par dossier")

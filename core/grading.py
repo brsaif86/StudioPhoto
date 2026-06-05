@@ -74,10 +74,18 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     arr[:, :, 1] *= 1.0 - 0.02 * wb_strength
     arr[:, :, 2] *= 1.0 + 0.01 * wb_strength
 
-    # 2. Shadow lift adaptatif
-    lift = 0.008 if mean_lum > 0.60 else (0.012 if mean_lum > 0.50 else 0.018)
-    arr *= (1 - lift)
-    arr += lift
+    # 2. Shadow lift adaptatif — bridé sur les images déjà claires (anti-surexpo)
+    if mean_lum > 0.62 or highlight_ratio > 0.35:
+        lift = 0.0                      # image lumineuse : ne pas ouvrir davantage
+    elif mean_lum > 0.60:
+        lift = 0.006
+    elif mean_lum > 0.50:
+        lift = 0.012
+    else:
+        lift = 0.018
+    if lift:
+        arr *= (1 - lift)
+        arr += lift
 
     # 3. S-curve adaptative
     curve_strength = 0.02 if std_lum > 0.20 else (0.03 if std_lum > 0.15 else 0.04)
@@ -108,6 +116,15 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
         arr **= 0.97
     elif mean_lum < 0.55:
         arr **= 0.99
+
+    # 6b. Anti-surexposition — rolloff doux des très hautes lumières
+    #     Récupère du détail dans les blancs « cramés » sans grisailler la robe :
+    #     seuls les pixels au-dessus de l'épaule (0.86) sont compressés, et
+    #     d'autant plus que l'image est globalement claire.
+    roll = 0.50 if (mean_lum > 0.62 or highlight_ratio > 0.30) else 0.22
+    shoulder = 0.86
+    over = np.clip((arr - shoulder) / (1.0 - shoulder), 0.0, 1.0)
+    arr -= over * (arr - shoulder) * roll
 
     # 7. Neutralisation des blancs — protection anti-dominante (bleu/couleur)
     #    Les pixels très clairs (robe blanche, ciel) sont ramenés fortement vers
@@ -153,12 +170,16 @@ def process_image(
     output_path: Path,
     skip_existing: bool = True,
     quality: int = DEFAULT_QUALITY,
+    profile: dict = None,
 ) -> str:
     """Traite une image et retourne un message de statut.
 
     - Conversion numpy unique
     - Skip si la sortie existe déjà
     - Libération mémoire explicite
+    - profile : si fourni (mode « série cohérente »), pilote les décisions
+      adaptatives à partir des métriques MOYENNES du dossier → rendu uniforme
+      sur toute la série (les masques peau/blancs restent par-image).
     """
     try:
         if skip_existing and output_path.exists():
@@ -174,9 +195,9 @@ def process_image(
             info   = ""
         else:
             arr01  = arr255 / 255.0
-            m      = analyze_image(arr01)
+            m      = profile if profile else analyze_image(arr01)
             graded = apply_color_grade(arr01, m)
-            mode   = "Couleur"
+            mode   = "Couleur" + ("·série" if profile else "")
             lum_label = (
                 "sombre"    if m["mean_lum"] < 0.45 else
                 "moyenne"   if m["mean_lum"] < 0.60 else
@@ -233,8 +254,10 @@ def grade_preview(input_path: Path, max_dim: int = 1600):
 
 def _grade_worker(args: tuple) -> str:
     """Wrapper picklable pour mp.Pool."""
-    input_path, output_path, skip_existing, quality = args
-    return process_image(Path(input_path), Path(output_path), skip_existing, quality)
+    input_path, output_path, skip_existing, quality, profile = args
+    return process_image(
+        Path(input_path), Path(output_path), skip_existing, quality, profile
+    )
 
 
 # ── Collecte des tâches ───────────────────────────────────────────────────────
@@ -246,8 +269,13 @@ def collect_grade_tasks(
     recursive: bool,
     skip_existing: bool,
     quality: int = DEFAULT_QUALITY,
+    coherent_series: bool = False,
 ) -> list:
-    """Retourne la liste des tuples (input, output, skip, quality) à traiter."""
+    """Retourne la liste des tuples (input, output, skip, quality, profile).
+
+    Si coherent_series=True, un profil moyen est calculé PAR DOSSIER et attaché
+    à chaque image de ce dossier (rendu uniforme sur la série).
+    """
     candidates = folder.rglob("*") if recursive else folder.iterdir()
 
     files = sorted([
@@ -257,6 +285,15 @@ def collect_grade_tasks(
         and not p.name.startswith("._")
         and "_output" not in p.parts
     ])
+
+    # Profils par dossier (calculés une seule fois)
+    profiles: dict = {}
+    if coherent_series:
+        by_dir: dict = {}
+        for p in files:
+            by_dir.setdefault(p.parent, []).append(p)
+        for parent, group in by_dir.items():
+            profiles[parent] = compute_folder_profile(group)
 
     tasks = []
     for input_path in files:
@@ -271,5 +308,43 @@ def collect_grade_tasks(
             out_path = input_path.parent / "_output" / (
                 input_path.stem + suffix + input_path.suffix
             )
-        tasks.append((str(input_path), str(out_path), skip_existing, quality))
+        profile = profiles.get(input_path.parent) if coherent_series else None
+        tasks.append((str(input_path), str(out_path), skip_existing, quality, profile))
     return tasks
+
+
+def compute_folder_profile(files: list, sample_max: int = 40, max_dim: int = 600):
+    """Calcule les métriques MOYENNES d'un ensemble d'images couleur.
+
+    Échantillonne au plus `sample_max` images (réduites à `max_dim` px) pour
+    rester rapide, ignore les N&B, et renvoie un dict de métriques moyen
+    (mean_lum, std_lum, warm_cast, highlight_ratio) ou None si rien d'exploitable.
+    """
+    if not files:
+        return None
+    files = sorted(files)
+    step = max(1, len(files) // sample_max)
+    sample = files[::step][:sample_max]
+
+    keys = ("mean_lum", "std_lum", "warm_cast", "highlight_ratio")
+    accum = {k: 0.0 for k in keys}
+    n = 0
+    for p in sample:
+        try:
+            img = Image.open(p).convert("RGB")
+            w, h = img.size
+            if max(w, h) > max_dim:
+                s = max_dim / max(w, h)
+                img = img.resize((max(1, int(w * s)), max(1, int(h * s))), Image.BILINEAR)
+            arr255 = np.asarray(img, dtype=np.float32)
+            if is_grayscale(arr255):
+                continue
+            m = analyze_image(arr255 / 255.0)
+            for k in keys:
+                accum[k] += m[k]
+            n += 1
+        except Exception:
+            continue
+    if n == 0:
+        return None
+    return {k: accum[k] / n for k in keys}
