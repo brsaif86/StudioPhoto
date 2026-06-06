@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLineEdit, QPushButton, QCheckBox, QSpinBox, QLabel,
-    QFileDialog, QGroupBox, QSizePolicy,
+    QFileDialog, QGroupBox, QSizePolicy, QComboBox, QSlider,
 )
 from PySide6.QtCore import Qt, QTimer
 
