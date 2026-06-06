@@ -46,9 +46,9 @@ CLASSES = {
         "the first look between the couple",
     ],
     "Atmosphere": [
-        "the empty wedding venue and decoration",
-        "table setup, flowers and ceremony setting without people",
-        "wide architectural view of the reception room",
+        "an empty wedding venue without people",
+        "the decorated ceremony canopy and chairs with nobody present",
+        "close-up of flowers, candles, table settings and decor details",
     ],
     "Family": [
         "a family group portrait at a wedding",
