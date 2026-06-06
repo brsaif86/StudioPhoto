@@ -101,14 +101,17 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=8))
     orange_mask = np.asarray(mask_img, dtype=np.float32) / 255.0
 
+    # Correction peau ADOUCIE : on retire moins de rouge et on ajoute très peu
+    # de bleu → la peau garde sa chaleur naturelle (évite le teint terne/gris).
     skin_strength = 0.5 if warm_cast > 0.08 else 1.0
-    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.03 * skin_strength
-    arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.015 * skin_strength
+    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.015 * skin_strength
+    arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.005 * skin_strength
 
-    # 5. Désaturation légère
+    # 5. Désaturation TRÈS légère (réduite) — garde des couleurs vivantes,
+    #    pas fades. On désature seulement 3 % au lieu de 7 %.
     lum_map = (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2])[:, :, np.newaxis]
-    arr *= 0.93
-    arr += lum_map * 0.07
+    arr *= 0.97
+    arr += lum_map * 0.03
     np.clip(arr, 0, 1, out=arr)
 
     # 6. Gamma lift adaptatif
