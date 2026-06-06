@@ -120,6 +120,59 @@ class GradePanel(QWidget):
         self.coherent_cb.toggled.connect(self._on_coherent_toggled)
 
         h.addWidget(opt_box, stretch=1)
+
+        # ── Rendu & LUT ─────────────────────────────────────────────────────
+        lut_box = QGroupBox("RENDU & LUT")
+        lg = QGridLayout(lut_box)
+        lg.setContentsMargins(12, 16, 12, 10)
+        lg.setHorizontalSpacing(10)
+        lg.setVerticalSpacing(6)
+
+        self.lut_dir_edit = QLineEdit()
+        self.lut_dir_edit.setReadOnly(True)
+        self.lut_dir_edit.setPlaceholderText("Dossier LUTs")
+        self.lut_dir_edit.setMaximumWidth(180)
+
+        self.btn_lut_dir = QPushButton("📂")
+        self.btn_lut_dir.setObjectName("btn_browse")
+        self.btn_lut_dir.setFixedWidth(30)
+        self.btn_lut_dir.setCursor(Qt.PointingHandCursor)
+        self.btn_lut_dir.clicked.connect(self._browse_lut_dir)
+
+        self.lut_combo = QComboBox()
+        self.lut_combo.setFixedWidth(150)
+        self.lut_combo.currentTextChanged.connect(self._on_lut_changed)
+
+        self.strength_slider = QSlider(Qt.Horizontal)
+        self.strength_slider.setRange(0, 100)
+        self.strength_slider.setValue(85)
+        self.strength_slider.setFixedWidth(120)
+        self.strength_slider.valueChanged.connect(self._on_lut_changed)
+
+        self.vibrance_slider = QSlider(Qt.Horizontal)
+        self.vibrance_slider.setRange(-50, 50)
+        self.vibrance_slider.setValue(10)
+        self.vibrance_slider.setFixedWidth(120)
+        self.vibrance_slider.valueChanged.connect(self._on_lut_changed)
+
+        self.lut_count_lbl = QLabel("0 LUTs")
+        self.lut_count_lbl.setObjectName("hint_label")
+
+        # Layout
+        lg.addWidget(QLabel("Dossier"), 0, 0)
+        lg.addWidget(self.lut_dir_edit, 0, 1)
+        lg.addWidget(self.btn_lut_dir, 0, 2)
+        lg.addWidget(self.lut_count_lbl, 0, 3)
+
+        lg.addWidget(QLabel("LUT"), 1, 0)
+        lg.addWidget(self.lut_combo, 1, 1)
+        lg.addWidget(QLabel("Intensité"), 1, 2)
+        lg.addWidget(self.strength_slider, 1, 3)
+
+        lg.addWidget(QLabel("Vibrance"), 2, 0)
+        lg.addWidget(self.vibrance_slider, 2, 1)
+
+        h.addWidget(lut_box, stretch=1)
         return w
 
     # ── Colonne droite : aperçu ─────────────────────────────────────────────
@@ -202,6 +255,32 @@ class GradePanel(QWidget):
             edit.setText(path)
             if edit is self.src_edit:
                 self.refresh_preview()
+
+    def _browse_lut_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Choisir le dossier LUTs")
+        if path:
+            self.lut_dir_edit.setText(path)
+            self._update_lut_list()
+            self._on_lut_changed()
+
+    def _update_lut_list(self) -> None:
+        path = self.lut_dir_edit.text().strip()
+        if not path:
+            self.lut_combo.clear()
+            self.lut_combo.addItem("Aucune")
+            self.lut_count_lbl.setText("0 LUTs")
+            return
+
+        from core.lut_engine import LutEngine
+        engine = LutEngine(path)
+        luts = engine.list_luts()
+        self.lut_combo.clear()
+        self.lut_combo.addItem("Aucune")
+        self.lut_combo.addItems(luts)
+        self.lut_count_lbl.setText(f"{len(luts)} LUTs")
+
+    def _on_lut_changed(self) -> None:
+        self._load_current_preview()
 
     def _set_nav_enabled(self, on: bool) -> None:
         self.prev_arrow.setEnabled(on)
@@ -302,7 +381,15 @@ class GradePanel(QWidget):
         token = self._preview_token
         # profil de série appliqué si « uniformiser » est coché
         prof = self._profile if self.coherent_cb.isChecked() else None
-        worker = PreviewWorker(path, profile=prof, edit=self.editor.current_edit())
+        worker = PreviewWorker(
+            path,
+            profile=prof,
+            edit=self.editor.current_edit(),
+            lut_dir=self.lut_dir_edit.text().strip(),
+            lut_name=self.lut_combo.currentText() if self.lut_combo.currentIndex() > 0 else None,
+            lut_strength=self.strength_slider.value() / 100.0,
+            vibrance=self.vibrance_slider.value() / 100.0
+        )
         worker.done.connect(
             lambda o, g, m, met, t=token: self._on_preview_done(o, g, m, met, t)
         )
@@ -344,8 +431,14 @@ class GradePanel(QWidget):
             return
         prof = self._profile if self.coherent_cb.isChecked() else None
         self.preview_info.setText("Enregistrement…")
-        worker = ExportWorker(str(path), out, prof, self.editor.current_edit(),
-                              self.quality_spin.value())
+        worker = ExportWorker(
+            str(path), out, prof, self.editor.current_edit(),
+            self.quality_spin.value(),
+            lut_dir=self.lut_dir_edit.text().strip(),
+            lut_name=self.lut_combo.currentText() if self.lut_combo.currentIndex() > 0 else None,
+            lut_strength=self.strength_slider.value() / 100.0,
+            vibrance=self.vibrance_slider.value() / 100.0
+        )
         worker.done.connect(self._on_export_done)
         self._track(worker)
 
@@ -369,6 +462,10 @@ class GradePanel(QWidget):
             "coherent":      self.coherent_cb.isChecked(),
             "edit_global":   edit_global,
             "edits_by_path": edits_by_path,
+            "lut_dir":       self.lut_dir_edit.text().strip(),
+            "lut_name":      self.lut_combo.currentText() if self.lut_combo.currentIndex() > 0 else None,
+            "lut_strength":  self.strength_slider.value() / 100.0,
+            "vibrance":      self.vibrance_slider.value() / 100.0,
         }
 
     def load_config(self, cfg: dict) -> None:
@@ -380,6 +477,19 @@ class GradePanel(QWidget):
         self.coherent_cb.setChecked(cfg.get("grade_coherent", True))
         self.workers_spin.setValue(cfg.get("grade_workers", default_workers()))
         self.quality_spin.setValue(cfg.get("grade_quality", DEFAULT_QUALITY))
+
+        self.lut_dir_edit.setText(cfg.get("lut_dir", "assets/luts"))
+        self._update_lut_list()
+
+        lut_name = cfg.get("lut_name")
+        if lut_name:
+            idx = self.lut_combo.findText(lut_name)
+            if idx != -1:
+                self.lut_combo.setCurrentIndex(idx)
+
+        self.strength_slider.setValue(int(cfg.get("lut_strength", 0.85) * 100))
+        self.vibrance_slider.setValue(int(cfg.get("vibrance", 0.10) * 100))
+
         self.editor.load_config(cfg)
         # Charge l'aperçu si un dossier valide est mémorisé
         if self.src_edit.text().strip():
@@ -394,4 +504,10 @@ class GradePanel(QWidget):
         cfg["grade_coherent"]  = self.coherent_cb.isChecked()
         cfg["grade_workers"]   = self.workers_spin.value()
         cfg["grade_quality"]   = self.quality_spin.value()
+
+        cfg["lut_dir"]       = self.lut_dir_edit.text().strip()
+        cfg["lut_name"]       = self.lut_combo.currentText() if self.lut_combo.currentIndex() > 0 else None
+        cfg["lut_strength"]   = self.strength_slider.value() / 100.0
+        cfg["vibrance"]       = self.vibrance_slider.value() / 100.0
+
         self.editor.save_config(cfg)

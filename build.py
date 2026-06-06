@@ -128,6 +128,12 @@ def main() -> int:
     if has_assets:
         log("Inclusion des assets de classification.")
         args += ["--add-data", f"assets{SEP}assets"]
+
+    # Assets LUTs
+    lut_assets = ROOT / "assets" / "luts"
+    if lut_assets.exists() and any(lut_assets.iterdir()):
+        log("Inclusion des LUTs.")
+        args += ["--add-data", f"assets/luts{SEP}assets/luts"]
     else:
         log("Assets de classification absents — l'exe sera sans tri auto.")
 
