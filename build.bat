@@ -9,12 +9,10 @@ for /f "delims=" %%v in ('python -c "from version import __version__; print(__ve
 set EXE_NAME=StudioPhoto-%VERSION%
 echo Version detectee : %VERSION%
 
-REM Conversion de l'icône si nécessaire
+REM (Re)génère l'icône carrée ICO + PNG à chaque build
 if exist app_icon.png (
-    if not exist app_icon.ico (
-        echo Conversion de l'icone PNG -^> ICO...
-        python make_ico.py
-    )
+    echo Generation de l'icone carree (ICO + PNG)...
+    python make_ico.py
 )
 
 REM Build PyInstaller
@@ -28,6 +26,7 @@ if exist app_icon.ico (
       --add-data "ui;ui" ^
       --add-data "version.py;." ^
       --add-data "app_icon.ico;." ^
+      --add-data "app_icon_square.png;." ^
       ui_entry.py
 ) else (
     echo Attention: app_icon.ico absent, build sans icone personnalisee.

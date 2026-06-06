@@ -22,9 +22,11 @@ if __name__ == "__main__":
     app.setApplicationVersion(__version__)
     app.setOrganizationName(APP_NAME)
 
-    # Icône application (PNG ou ICO selon ce qui est disponible)
-    _base = Path(__file__).parent
-    for _icon_name in ("app_icon.ico", "app_icon.png"):
+    # Icône application — version carrée en priorité (ICO multi-résolution,
+    # puis PNG carré généré), jamais le PNG source rectangulaire.
+    # En .exe --onefile, les ressources sont extraites dans sys._MEIPASS.
+    _base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    for _icon_name in ("app_icon.ico", "app_icon_square.png"):
         _icon_path = _base / _icon_name
         if _icon_path.exists():
             app.setWindowIcon(QIcon(str(_icon_path)))
