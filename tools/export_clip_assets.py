@@ -73,6 +73,12 @@ def export_open_clip(model_name: str, pretrained: str):
             class_vecs.append(v.cpu().numpy().astype(np.float32))
     text_emb = np.stack(class_vecs, axis=0)                 # [6, D]
 
+    # Centrage : on retire 50 % de la composante commune à toutes les classes
+    # (direction « générique » qui sur-attire certaines classes), puis re-L2.
+    # Améliore la séparation des classes visuellement proches.
+    text_emb = text_emb - 0.5 * text_emb.mean(axis=0, keepdims=True)
+    text_emb = text_emb / (np.linalg.norm(text_emb, axis=1, keepdims=True) + 1e-8)
+
     # — export ONNX de l'encodeur image —
     class ImageEncoder(torch.nn.Module):
         def __init__(self, m):
@@ -86,11 +92,15 @@ def export_open_clip(model_name: str, pretrained: str):
     dummy = torch.randn(1, 3, input_size, input_size)
     ASSETS.mkdir(parents=True, exist_ok=True)
     onnx_path = ASSETS / "mobileclip_image.onnx"
+    # dynamo=False → exporteur TorchScript legacy : opset 14, poids embarqués,
+    # ONNX lisible par cv2.dnn (le nouvel exporteur dynamo produit des opsets
+    # récents non supportés par OpenCV).
     torch.onnx.export(
         enc, dummy, str(onnx_path),
         input_names=["image"], output_names=["features"],
         dynamic_axes={"image": {0: "batch"}, "features": {0: "batch"}},
         opset_version=14,
+        dynamo=False,
     )
 
     np.save(ASSETS / "text_embeddings.npy", text_emb)

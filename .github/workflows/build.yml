@@ -40,7 +40,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install Pillow numpy PySide6 pyinstaller psutil
+        run: pip install Pillow numpy PySide6 pyinstaller psutil opencv-python-headless onnxruntime
 
       # ── Lecture de la version ───────────────────────────────────────────────
       - name: Read version (Windows)

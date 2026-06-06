@@ -9,3 +9,4 @@ build/
 # Assets modèle CLIP (volumineux, générés via tools/export_clip_assets.py)
 assets/*.onnx
 assets/*.npy
+assets/clip_meta.json

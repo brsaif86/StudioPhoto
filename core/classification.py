@@ -88,9 +88,16 @@ def assets_available() -> bool:
 # ── Prétraitement (OpenCV) ────────────────────────────────────────────────────
 
 def preprocess(path, size: int, mean, std) -> np.ndarray:
-    """Décode + redimensionne + normalise une image en blob NCHW float32 [1,3,H,W]."""
+    """Décode + redimensionne + normalise une image en blob NCHW float32 [1,3,H,W].
+
+    Lecture via np.fromfile + cv2.imdecode : cv2.imread échoue sur les chemins
+    non-ASCII (accents, hébreu…) sous Windows.
+    """
     import cv2
-    img = cv2.imread(str(path), cv2.IMREAD_COLOR)        # BGR uint8
+    data = np.fromfile(str(path), dtype=np.uint8)
+    if data.size == 0:
+        raise ValueError(f"image illisible: {path}")
+    img = cv2.imdecode(data, cv2.IMREAD_COLOR)           # BGR uint8
     if img is None:
         raise ValueError(f"image illisible: {path}")
     img = cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
@@ -131,17 +138,34 @@ class Classifier:
     def __init__(self, assets_dir: Path = None):
         self._dir = Path(assets_dir) if assets_dir else _assets_dir()
         self._net = None
+        self._sess = None
+        self._backend = None
+        self._in_name = None
         self._text_emb = None
         self._meta = None
 
     def load(self) -> None:
-        import cv2
         meta_path = self._dir / "clip_meta.json"
         self._meta = json.loads(meta_path.read_text(encoding="utf-8"))
         self._text_emb = np.load(self._dir / "text_embeddings.npy").astype(np.float32)
         # garantir la normalisation L2 des embeddings texte
         self._text_emb /= (np.linalg.norm(self._text_emb, axis=1, keepdims=True) + 1e-8)
-        self._net = cv2.dnn.readNetFromONNX(str(self._dir / "mobileclip_image.onnx"))
+
+        onnx_path = str(self._dir / "mobileclip_image.onnx")
+        # Backend d'inférence : onnxruntime (CPU, supporte les ViT) en priorité,
+        # cv2.dnn en repli. Aucun des deux n'embarque torch.
+        try:
+            import onnxruntime as ort
+            so = ort.SessionOptions()
+            so.intra_op_num_threads = 0   # auto (tous les cœurs)
+            self._sess = ort.InferenceSession(onnx_path, sess_options=so,
+                                              providers=["CPUExecutionProvider"])
+            self._in_name = self._sess.get_inputs()[0].name
+            self._backend = "ort"
+        except ImportError:
+            import cv2
+            self._net = cv2.dnn.readNetFromONNX(onnx_path)
+            self._backend = "cv2"
 
     # — accès métadonnées —
     @property
@@ -166,6 +190,8 @@ class Classifier:
 
     def forward(self, blob: np.ndarray) -> np.ndarray:
         """Inférence sur un blob [B,3,H,W] → features [B,D]."""
+        if getattr(self, "_backend", "cv2") == "ort":
+            return self._sess.run(None, {self._in_name: blob.astype(np.float32)})[0]
         self._net.setInput(blob)
         return self._net.forward()
 
