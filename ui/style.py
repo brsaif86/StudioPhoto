@@ -426,6 +426,76 @@ QFrame#hline {{
     min-height: 1px;
 }}
 
+/* ── Éditeur v3 (presets + corrections) ──────────────────── */
+QWidget#editor_col {{
+    background: transparent;
+}}
+
+QFrame#editor_box {{
+    background-color: {BG2};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+}}
+
+QLabel#editor_title {{
+    color: {TEXT2};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+}}
+
+QLabel#slider_value {{
+    color: {ACCENT};
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 34px;
+}}
+
+QPushButton#preset_btn {{
+    background-color: {BG3};
+    color: {TEXT2};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 8px 6px;
+    font-size: 11px;
+}}
+
+QPushButton#preset_btn:hover {{
+    color: {TEXT1};
+    border-color: #3A3A3A;
+}}
+
+QPushButton#preset_btn:checked {{
+    background-color: rgba(200,169,110,0.14);
+    color: {ACCENT};
+    border: 1px solid {ACCENT};
+    font-weight: 600;
+}}
+
+/* curseurs d'édition (-100..100) */
+QSlider::groove:horizontal {{
+    height: 3px;
+    background: {BG3};
+    border-radius: 1px;
+}}
+
+QSlider::handle:horizontal {{
+    background: {ACCENT};
+    width: 14px;
+    height: 14px;
+    margin: -6px 0;
+    border-radius: 7px;
+}}
+
+QSlider::handle:horizontal:hover {{
+    background: #D4B87A;
+}}
+
+QSlider::sub-page:horizontal {{
+    background: #4A4030;
+    border-radius: 1px;
+}}
+
 /* ── Tooltip ─────────────────────────────────────────────── */
 QToolTip {{
     background-color: {BG2};

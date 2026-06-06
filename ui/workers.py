@@ -41,6 +41,8 @@ class GradeWorker(QThread):
             workers      = p.get("workers", 6),
             quality      = p.get("quality", DEFAULT_QUALITY),
             coherent_series = p.get("coherent", True),
+            edit_global    = p.get("edit_global"),
+            edits_by_path  = p.get("edits_by_path"),
             on_log       = self.log_line.emit,
             on_progress  = self.progress.emit,
             on_current   = self.current.emit,

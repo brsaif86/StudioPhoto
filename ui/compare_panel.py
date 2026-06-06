@@ -29,15 +29,16 @@ class PreviewWorker(QThread):
     done  = Signal(object, object, str, dict)   # (orig_px, graded_px, mode, metrics)
     error = Signal(str)
 
-    def __init__(self, path, profile: dict = None, parent=None):
+    def __init__(self, path, profile: dict = None, edit=None, parent=None):
         super().__init__(parent)
         self._path = path
         self._profile = profile
+        self._edit = edit
 
     def run(self) -> None:
         try:
             original, graded, mode, metrics = grade_preview(
-                self._path, profile=self._profile
+                self._path, profile=self._profile, edit=self._edit
             )
             self.done.emit(
                 _pil_to_qpixmap(original), _pil_to_qpixmap(graded), mode, metrics
@@ -60,6 +61,24 @@ class ProfileWorker(QThread):
             self.done.emit(compute_folder_profile(self._files))
         except Exception:
             self.done.emit(None)
+
+
+class ExportWorker(QThread):
+    """Enregistre l'image courante en plein format avec les réglages actifs."""
+    done = Signal(bool, str)   # (succès, message)
+
+    def __init__(self, src, dst, profile, edit, quality, parent=None):
+        super().__init__(parent)
+        self._src, self._dst = src, dst
+        self._profile, self._edit, self._quality = profile, edit, quality
+
+    def run(self) -> None:
+        from core.grading import process_image
+        msg = process_image(
+            Path(self._src), Path(self._dst), skip_existing=False,
+            quality=self._quality, profile=self._profile, edit=self._edit,
+        )
+        self.done.emit("✗" not in msg, msg)
 
 
 # ── Vue comparateur à curseur ──────────────────────────────────────────────────

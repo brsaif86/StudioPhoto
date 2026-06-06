@@ -14,7 +14,8 @@ from PySide6.QtCore import Qt, QTimer
 from core.grading import (
     DEFAULT_SUFFIX, DEFAULT_QUALITY, default_workers, list_source_images,
 )
-from ui.compare_panel import BeforeAfterView, PreviewWorker, ProfileWorker
+from ui.compare_panel import BeforeAfterView, PreviewWorker, ProfileWorker, ExportWorker
+from ui.editor_panel import EditorPanel
 
 
 class GradePanel(QWidget):
@@ -36,12 +37,19 @@ class GradePanel(QWidget):
         self._build()
 
     def _build(self) -> None:
-        # Disposition 2 colonnes : réglages (gauche, compact) | aperçu (droite)
+        # 3 colonnes : réglages (gauche) | aperçu (centre) | éditeur (droite)
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 4, 0, 0)
         root.setSpacing(16)
         root.addWidget(self._build_controls_column())
         root.addWidget(self._build_preview_column(), stretch=1)
+
+        self.editor = EditorPanel()
+        self.editor.setMinimumWidth(270)
+        self.editor.setMaximumWidth(310)
+        self.editor.changed.connect(self._load_current_preview)
+        self.editor.export_requested.connect(self._export_current)
+        root.addWidget(self.editor)
 
     # ── Colonne gauche : réglages compacts ──────────────────────────────────
 
@@ -306,11 +314,12 @@ class GradePanel(QWidget):
         if idx < 0 or idx >= len(self._images):
             return
         path = self._images[idx]
+        self.editor.set_current_image(path)
         self._preview_token += 1
         token = self._preview_token
         # profil de série appliqué si « uniformiser » est coché
         prof = self._profile if self.coherent_cb.isChecked() else None
-        worker = PreviewWorker(path, profile=prof)
+        worker = PreviewWorker(path, profile=prof, edit=self.editor.current_edit())
         worker.done.connect(
             lambda o, g, m, met, t=token: self._on_preview_done(o, g, m, met, t)
         )
@@ -338,20 +347,45 @@ class GradePanel(QWidget):
         self.view.clear()
         self.preview_info.setText(f"Erreur : {msg}")
 
+    # ── Export d'une image ──────────────────────────────────────────────────
+
+    def _export_current(self) -> None:
+        if not self._images:
+            return
+        path = self._images[self._nav_idx]
+        default = path.stem + "_graded.jpg"
+        out, _ = QFileDialog.getSaveFileName(
+            self, "Enregistrer le résultat", default, "Image JPEG (*.jpg *.jpeg)"
+        )
+        if not out:
+            return
+        prof = self._profile if self.coherent_cb.isChecked() else None
+        self.preview_info.setText("Enregistrement…")
+        worker = ExportWorker(str(path), out, prof, self.editor.current_edit(),
+                              self.quality_spin.value())
+        worker.done.connect(self._on_export_done)
+        self._track(worker)
+
+    def _on_export_done(self, ok: bool, msg: str) -> None:
+        self.preview_info.setText("✓ Enregistré" if ok else f"Échec : {msg}")
+
     # ── Config ──────────────────────────────────────────────────────────────
 
     def get_params(self) -> dict:
         src = self.src_edit.text().strip()
         out = self.out_edit.text().strip()
+        edit_global, edits_by_path = self.editor.batch_edits()
         return {
-            "folder":     Path(src).resolve() if src else None,
-            "output_dir": Path(out).resolve() if out else None,
-            "suffix":     self.suffix_edit.text().strip() or DEFAULT_SUFFIX,
-            "recursive":  self.recursive_cb.isChecked(),
-            "skip":       self.skip_cb.isChecked(),
-            "workers":    self.workers_spin.value(),
-            "quality":    self.quality_spin.value(),
-            "coherent":   self.coherent_cb.isChecked(),
+            "folder":        Path(src).resolve() if src else None,
+            "output_dir":    Path(out).resolve() if out else None,
+            "suffix":        self.suffix_edit.text().strip() or DEFAULT_SUFFIX,
+            "recursive":     self.recursive_cb.isChecked(),
+            "skip":          self.skip_cb.isChecked(),
+            "workers":       self.workers_spin.value(),
+            "quality":       self.quality_spin.value(),
+            "coherent":      self.coherent_cb.isChecked(),
+            "edit_global":   edit_global,
+            "edits_by_path": edits_by_path,
         }
 
     def load_config(self, cfg: dict) -> None:
@@ -363,6 +397,7 @@ class GradePanel(QWidget):
         self.coherent_cb.setChecked(cfg.get("grade_coherent", True))
         self.workers_spin.setValue(cfg.get("grade_workers", default_workers()))
         self.quality_spin.setValue(cfg.get("grade_quality", DEFAULT_QUALITY))
+        self.editor.load_config(cfg)
         # Charge l'aperçu si un dossier valide est mémorisé
         if self.src_edit.text().strip():
             QTimer.singleShot(0, self.refresh_preview)
@@ -376,3 +411,4 @@ class GradePanel(QWidget):
         cfg["grade_coherent"]  = self.coherent_cb.isChecked()
         cfg["grade_workers"]   = self.workers_spin.value()
         cfg["grade_quality"]   = self.quality_spin.value()
+        self.editor.save_config(cfg)

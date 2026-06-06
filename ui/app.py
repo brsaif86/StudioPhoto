@@ -29,8 +29,8 @@ class MainWindow(QMainWindow):
         self._cfg = cfg_store.load()
 
         self.setWindowTitle(FULL_NAME)
-        self.resize(1180, 760)
-        self.setMinimumSize(940, 620)
+        self.resize(1380, 800)
+        self.setMinimumSize(1080, 640)
         self.setStyleSheet(QSS)
 
         self._build_ui()
