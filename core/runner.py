@@ -33,16 +33,21 @@ def run_grade_batch(
 
     Retourne {"ok": int, "skipped": int, "errors": int, "total": int}.
     """
+    on_log("  Analyse du dossier…")
+    if on_current:
+        on_current("Analyse du dossier…", "")
     if coherent_series:
         on_log("  ⚙ Mode série cohérente : calcul du profil moyen par dossier…")
     tasks = collect_grade_tasks(
-        folder, suffix, output_dir, recursive, skip_existing, quality, coherent_series
+        folder, suffix, output_dir, recursive, skip_existing, quality,
+        coherent_series, on_log=on_log,
     )
     total = len(tasks)
     if total == 0:
         on_log("  Aucune image JPG trouvée.")
         return {"ok": 0, "skipped": 0, "errors": 0, "total": 0}
 
+    on_log(f"  {total} image(s) à traiter.")
     if on_progress:
         on_progress(0, total)
 
@@ -86,11 +91,16 @@ def run_grade_batch(
             on_progress(done, total)
 
     if workers > 1 and total > 1:
+        on_log(f"  Démarrage de {workers} processus… (quelques secondes)")
+        if on_current:
+            on_current(f"Démarrage de {workers} processus…", "")
+        # chunksize : réduit le coût de communication sur les très gros lots
+        chunksize = max(1, min(16, total // (workers * 8)))
         pool = mp.Pool(processes=workers)
         try:
             done = 0
             for result, task in zip(
-                pool.imap_unordered(_grade_worker, tasks), tasks
+                pool.imap(_grade_worker, tasks, chunksize), tasks
             ):
                 if cancel_event and cancel_event.is_set():
                     pool.terminate()

@@ -295,6 +295,7 @@ def collect_grade_tasks(
     skip_existing: bool,
     quality: int = DEFAULT_QUALITY,
     coherent_series: bool = False,
+    on_log=None,
 ) -> list:
     """Retourne la liste des tuples (input, output, skip, quality, profile).
 
@@ -311,13 +312,16 @@ def collect_grade_tasks(
         and "_output" not in p.parts
     ])
 
-    # Profils par dossier (calculés une seule fois)
+    # Profils par dossier (calculés une seule fois, avec feedback)
     profiles: dict = {}
     if coherent_series:
         by_dir: dict = {}
         for p in files:
             by_dir.setdefault(p.parent, []).append(p)
-        for parent, group in by_dir.items():
+        ndirs = len(by_dir)
+        for i, (parent, group) in enumerate(by_dir.items(), 1):
+            if on_log and (ndirs <= 30 or i % 5 == 0 or i == ndirs):
+                on_log(f"  ⚙ Profil de série {i}/{ndirs} — {parent.name}")
             profiles[parent] = compute_folder_profile(group)
 
     tasks = []
@@ -354,7 +358,7 @@ def list_source_images(folder: Path, suffix: str, recursive: bool) -> list:
     )
 
 
-def compute_folder_profile(files: list, sample_max: int = 40, max_dim: int = 600):
+def compute_folder_profile(files: list, sample_max: int = 20, max_dim: int = 384):
     """Calcule les métriques MOYENNES d'un ensemble d'images couleur.
 
     Échantillonne au plus `sample_max` images (réduites à `max_dim` px) pour
