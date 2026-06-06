@@ -114,12 +114,12 @@ QGroupBox {{
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 14px;
-    top: -10px;
+    left: 12px;
+    top: -9px;
     padding: 2px 8px;
     background-color: {BG2};
-    color: {TEXT3};
-    font-size: 9px;
+    color: {ACCENT};
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 2px;
 }}

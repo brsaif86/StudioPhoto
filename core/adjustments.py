@@ -74,7 +74,7 @@ class EditParams:
         return [p for p in LOOK_PRESETS if p in self.presets]
 
     def label(self) -> str:
-        return " + ".join(self.presets) if self.presets else DEFAULT_PRESET
+        return " + ".join(self.presets) if self.presets else "Original"
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -357,6 +357,15 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
       l'ordre, par-dessus la base.
     - puis les 8 corrections manuelles.
     """
+    # Aucun preset sélectionné → image ORIGINALE (aucun étalonnage), seules
+    # les corrections manuelles éventuelles s'appliquent. C'est l'état rendu
+    # par « Réinitialiser tous les réglages ».
+    if not params.presets:
+        out = arr01.copy()
+        if not params._sliders_zero():
+            out = apply_manual(out, params, grain_seed=grain_seed)
+        return out
+
     base = params.base()
     if base == "Noir & Blanc":
         out = look_bw(arr01)

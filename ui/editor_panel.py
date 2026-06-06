@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
-from core.adjustments import EditParams, PRESETS, DEFAULT_PRESET, BASE_PRESETS, LOOK_PRESETS
+from core.adjustments import (
+    EditParams, PRESETS, DEFAULT_PRESET, BASE_PRESETS, LOOK_PRESETS, _SLIDER_NAMES,
+)
 
 # (attribut EditParams, libellé affiché)
 SLIDERS = [
@@ -226,11 +228,14 @@ class EditorPanel(QWidget):
         self._sync_ui()
 
     def _on_reset(self) -> None:
+        """Réinitialise : revient à la PHOTO ORIGINALE (aucun preset, curseurs 0)."""
         tgt = self._target()
-        for f in fields(EditParams):
-            setattr(tgt, f.name, getattr(EditParams(), f.name))
+        for n in _SLIDER_NAMES:
+            setattr(tgt, n, 0.0)
+        tgt.presets = []                         # aucun preset → image originale
         if not self.scope_cb.isChecked() and self._current in self._overrides:
-            del self._overrides[self._current]   # retour au global
+            # surcharge image : on garde une surcharge vide (= original pour CETTE image)
+            self._overrides[self._current] = tgt
         self._sync_ui()
         self.changed.emit()
 
