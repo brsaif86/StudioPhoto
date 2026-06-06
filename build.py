@@ -56,6 +56,15 @@ def main() -> int:
         args += ["--icon", "app_icon.ico", "--add-data", f"app_icon.ico{SEP}."]
     if has_sq:
         args += ["--add-data", f"app_icon_square.png{SEP}."]
+
+    # Assets de classification (ONNX + embeddings) si présents
+    assets = ROOT / "assets"
+    if assets.exists() and any(assets.iterdir()):
+        log("Inclusion des assets de classification.")
+        args += ["--add-data", f"assets{SEP}assets"]
+    else:
+        log("Assets de classification absents — l'exe sera sans tri auto.")
+
     args.append("ui_entry.py")
 
     log("Lancement de PyInstaller…")

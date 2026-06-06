@@ -1,0 +1,6 @@
+# Dépendances DEV uniquement — pour générer les assets CLIP hors-ligne.
+# NE PAS embarquer dans l'.exe (le runtime n'utilise que cv2 + numpy).
+-r requirements.txt
+torch>=2.0
+open_clip_torch>=2.20
+onnx>=1.15

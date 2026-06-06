@@ -19,6 +19,7 @@ from pathlib import Path
 from core.grading import DEFAULT_SUFFIX, DEFAULT_QUALITY, collect_grade_tasks, default_workers
 from core.renaming import collect_rename_targets, rename_folder
 from core.runner import run_grade_batch
+from core.classification import run_classify_batch, DEFAULT_THRESHOLD
 
 
 # ── grade ──────────────────────────────────────────────────────────────────────
@@ -76,6 +77,42 @@ def cmd_rename(args) -> None:
 
     verb = "à renommer (aperçu)" if dry_run else "renommée(s)"
     print(f"\n  Terminé : {total_renamed} image(s) {verb}.")
+
+
+# ── classify ───────────────────────────────────────────────────────────────────
+
+def cmd_classify(args) -> None:
+    folder = Path(args.folder).resolve()
+    if not folder.is_dir():
+        sys.exit(f"✗ Dossier introuvable : {folder}")
+
+    if args.mode == "move" and not args.yes:
+        sys.exit("Le mode 'move' est destructif : ajoute --yes pour confirmer.")
+
+    output_dir = Path(args.output).resolve() if args.output else None
+
+    print("=" * 60)
+    print(f"  Source    : {folder}")
+    print(f"  Mode      : {args.mode}")
+    print(f"  Seuil     : {args.threshold}")
+    print(f"  Récursif  : {'oui' if args.recursive else 'non'}")
+    print("=" * 60)
+
+    result = run_classify_batch(
+        folder        = folder,
+        output_dir    = output_dir,
+        mode          = args.mode,
+        threshold     = args.threshold,
+        recursive     = args.recursive,
+        manifest_name = args.manifest,
+    )
+
+    if result.get("no_model"):
+        sys.exit("Modèle absent — voir tools/export_clip_assets.py.")
+    print("\n" + "=" * 60)
+    print(f"  Terminé : {result['ok']} classée(s), {result['review']} à revoir"
+          + (f", {result['errors']} erreur(s)" if result["errors"] else ""))
+    print("=" * 60)
 
 
 # ── benchmark ──────────────────────────────────────────────────────────────────
@@ -154,6 +191,19 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--real", action="store_true", default=False,
                    help="Effectuer le renommage réel (défaut : aperçu)")
 
+    # classify
+    c = sub.add_parser("classify", help="Tri auto zero-shot (CLIP via OpenCV)")
+    c.add_argument("folder")
+    c.add_argument("--output", "-o", default=None)
+    c.add_argument("--mode", choices=["manifest", "copy", "move"], default="manifest")
+    c.add_argument("--threshold", "-t", type=float, default=DEFAULT_THRESHOLD)
+    c.add_argument("--recursive", "-r", action="store_true", default=True)
+    c.add_argument("--no-recursive", dest="recursive", action="store_false")
+    c.add_argument("--manifest", default="results.json",
+                   help="Nom du manifest (.json ou .csv)")
+    c.add_argument("--yes", action="store_true", default=False,
+                   help="Confirme le mode 'move' (destructif)")
+
     # benchmark
     b = sub.add_parser("benchmark", help="Mesure le débit (images/s)")
     b.add_argument("folder")
@@ -176,6 +226,8 @@ def main() -> None:
         cmd_grade(args)
     elif args.cmd == "rename":
         cmd_rename(args)
+    elif args.cmd == "classify":
+        cmd_classify(args)
     elif args.cmd == "benchmark":
         cmd_benchmark(args)
 

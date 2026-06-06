@@ -84,6 +84,9 @@ jobs:
           if (Test-Path app_icon_square.png) {
             $buildArgs += "--add-data", "app_icon_square.png:."
           }
+          if ((Test-Path assets) -and (Get-ChildItem assets | Measure-Object).Count -gt 0) {
+            $buildArgs += "--add-data", "assets:assets"
+          }
           $buildArgs += "ui_entry.py"
           python -m PyInstaller @buildArgs
 
@@ -97,6 +100,9 @@ jobs:
           fi
           if [ -f app_icon_square.png ]; then
             ICON_ARGS="$ICON_ARGS --add-data app_icon_square.png:."
+          fi
+          if [ -d assets ] && [ -n "$(ls -A assets 2>/dev/null)" ]; then
+            ICON_ARGS="$ICON_ARGS --add-data assets:assets"
           fi
           python -m PyInstaller \
             --onefile \

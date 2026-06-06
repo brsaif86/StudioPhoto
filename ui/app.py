@@ -17,8 +17,9 @@ from core import config as cfg_store
 from ui.grade_panel import GradePanel
 from ui.rename_panel import RenamePanel
 from ui.compare_panel import ComparePanel
-from ui.workers import GradeWorker, RenameWorker
-from ui.style import QSS, ACCENT, SUCCESS, ERROR, SKIP, TEXT2, TEXT3
+from ui.classify_panel import ClassifyPanel
+from ui.workers import GradeWorker, RenameWorker, ClassifyWorker
+from ui.style import QSS, ACCENT, SUCCESS, ERROR, SKIP, REVIEW, TEXT2, TEXT3
 from version import FULL_NAME, __version__
 
 
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self.grade_panel.load_config(self._cfg)
         self.rename_panel.load_config(self._cfg)
+        self.classify_panel.load_config(self._cfg)
 
     # ── Build UI ──────────────────────────────────────────────────────────────
 
@@ -74,13 +76,15 @@ class MainWindow(QMainWindow):
         v.addWidget(self._hline())
 
         # Nav
-        self.nav_grade   = QPushButton("ÉTALONNAGE")
-        self.nav_compare = QPushButton("APERÇU")
-        self.nav_rename  = QPushButton("RENOMMAGE")
+        self.nav_grade    = QPushButton("ÉTALONNAGE")
+        self.nav_compare  = QPushButton("APERÇU")
+        self.nav_classify = QPushButton("CLASSIFICATION")
+        self.nav_rename   = QPushButton("RENOMMAGE")
         for btn, name in [
-            (self.nav_grade,   "nav_grade"),
-            (self.nav_compare, "nav_compare"),
-            (self.nav_rename,  "nav_rename"),
+            (self.nav_grade,    "nav_grade"),
+            (self.nav_compare,  "nav_compare"),
+            (self.nav_classify, "nav_classify"),
+            (self.nav_rename,   "nav_rename"),
         ]:
             btn.setObjectName(name)
             btn.setCheckable(True)
@@ -91,6 +95,7 @@ class MainWindow(QMainWindow):
         self.nav_grade.setChecked(True)
         self.nav_grade.clicked.connect(lambda: self._switch(0))
         self.nav_compare.clicked.connect(lambda: self._switch(1))
+        self.nav_classify.clicked.connect(lambda: self._switch(3))
         self.nav_rename.clicked.connect(lambda: self._switch(2))
 
         v.addStretch()
@@ -145,12 +150,14 @@ class MainWindow(QMainWindow):
         sc.setSpacing(0)
 
         self.stack = QStackedWidget()
-        self.grade_panel   = GradePanel()
-        self.compare_panel = ComparePanel()
-        self.rename_panel  = RenamePanel()
-        self.stack.addWidget(self.grade_panel)    # index 0
-        self.stack.addWidget(self.compare_panel)  # index 1
-        self.stack.addWidget(self.rename_panel)   # index 2
+        self.grade_panel    = GradePanel()
+        self.compare_panel  = ComparePanel()
+        self.rename_panel   = RenamePanel()
+        self.classify_panel = ClassifyPanel()
+        self.stack.addWidget(self.grade_panel)     # index 0
+        self.stack.addWidget(self.compare_panel)   # index 1
+        self.stack.addWidget(self.rename_panel)    # index 2
+        self.stack.addWidget(self.classify_panel)  # index 3
         sc.addWidget(self.stack)
         sc.addStretch()
 
@@ -260,6 +267,7 @@ class MainWindow(QMainWindow):
         self.nav_grade.setChecked(idx == 0)
         self.nav_compare.setChecked(idx == 1)
         self.nav_rename.setChecked(idx == 2)
+        self.nav_classify.setChecked(idx == 3)
         # L'onglet Aperçu n'a pas de lot à lancer : on masque la barre d'action
         is_compare = (idx == 1)
         self.action_bar.setVisible(not is_compare)
@@ -270,10 +278,13 @@ class MainWindow(QMainWindow):
     # ── Run / Cancel ──────────────────────────────────────────────────────────
 
     def _on_run(self) -> None:
-        if self.stack.currentIndex() == 0:
+        idx = self.stack.currentIndex()
+        if idx == 0:
             self._start_grading()
-        elif self.stack.currentIndex() == 2:
+        elif idx == 2:
             self._start_renaming()
+        elif idx == 3:
+            self._start_classify()
 
     def _prefill_compare(self) -> None:
         """Charge la première image JPEG du dossier source dans l'aperçu."""
@@ -337,6 +348,40 @@ class MainWindow(QMainWindow):
         worker.progress.connect(self._update_progress)
         worker.current.connect(self._update_current)
         worker.finished.connect(self._on_rename_done)
+        self._start_worker(worker)
+
+    def _start_classify(self) -> None:
+        params = self.classify_panel.get_params()
+        if not params["folder"] or not params["folder"].is_dir():
+            QMessageBox.critical(self, "Erreur", "Choisis un dossier source valide.")
+            return
+
+        if params["mode"] == "move":
+            reply = QMessageBox.question(
+                self, "Confirmer le déplacement",
+                "Le mode « Déplacer » retire les fichiers du dossier source de "
+                "façon irréversible.\n\nContinuer ?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+        self._log_sep()
+        mode_lbl = {"manifest": "Manifest", "copy": "Copie", "move": "Déplacement"}
+        self._log(f"  Source : {params['folder']}", TEXT2)
+        self._log(
+            f"  Mode   : {mode_lbl.get(params['mode'])}  ·  "
+            f"Seuil : {params['threshold']:.2f}  ·  "
+            f"Récursif : {'oui' if params['recursive'] else 'non'}", TEXT2
+        )
+
+        worker = ClassifyWorker(params)
+        worker.log_line.connect(self._log_auto)
+        worker.progress.connect(self._update_progress)
+        worker.current.connect(self._update_current)
+        worker.speed.connect(self._update_speed)
+        worker.eta.connect(self._update_eta)
+        worker.finished.connect(self._on_classify_done)
         self._start_worker(worker)
 
     def _start_worker(self, worker) -> None:
@@ -403,6 +448,27 @@ class MainWindow(QMainWindow):
         self._log_sep()
         self._finish()
 
+    def _on_classify_done(self, result: dict) -> None:
+        if result.get("no_model"):
+            self._log_sep()
+            self._log("  Modèle absent — voir tools/export_clip_assets.py.", ERROR)
+            self._log_sep()
+            self._finish()
+            return
+        self.stat_processed.setText(str(result.get("ok", 0)))
+        self.stat_skipped.setText(str(result.get("review", 0)))
+        self.stat_errors.setText(str(result.get("errors", 0)))
+        self._log_sep()
+        status = "Annulé" if result.get("cancelled") else "Terminé"
+        self._log(
+            f"  {status}  ·  {result.get('ok', 0)} classée(s)  ·  "
+            f"{result.get('review', 0)} à revoir"
+            + (f"  ·  {result['errors']} erreur(s)" if result.get("errors") else ""),
+            ACCENT
+        )
+        self._log_sep()
+        self._finish()
+
     def _on_rename_done(self, total_renamed: int, dry_run: bool) -> None:
         self._log_sep()
         verb = "à renommer (aperçu)" if dry_run else "renommée(s)"
@@ -421,10 +487,11 @@ class MainWindow(QMainWindow):
     # ── Log helpers ───────────────────────────────────────────────────────────
 
     def _log_auto(self, text: str) -> None:
-        if "✓" in text:   self._log(text, SUCCESS)
-        elif "✗" in text: self._log(text, ERROR)
-        elif "⏭" in text: self._log(text, SKIP)
-        else:              self._log(text, TEXT2)
+        if "À revoir" in text:  self._log(text, REVIEW)
+        elif "✓" in text:       self._log(text, SUCCESS)
+        elif "✗" in text:       self._log(text, ERROR)
+        elif "⏭" in text:       self._log(text, SKIP)
+        else:                   self._log(text, TEXT2)
 
     def _log(self, text: str, color: str = TEXT2) -> None:
         fmt = QTextCharFormat()
@@ -448,6 +515,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.grade_panel.save_config(self._cfg)
         self.rename_panel.save_config(self._cfg)
+        self.classify_panel.save_config(self._cfg)
         cfg_store.save(self._cfg)
         super().closeEvent(event)
 

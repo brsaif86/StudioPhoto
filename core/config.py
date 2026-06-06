@@ -25,6 +25,12 @@ def _defaults() -> dict:
         "rename_base":         "",
         "rename_include_root": False,
         "rename_dryrun":       True,
+        "classify_source":     "",
+        "classify_output":     "",
+        "classify_mode":       "manifest",
+        "classify_threshold":  0.45,
+        "classify_batch":      16,
+        "classify_recursive":  True,
     }
 
 

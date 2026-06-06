@@ -14,6 +14,7 @@ TEXT3    = "#444444"
 SUCCESS  = "#6BAE82"
 ERROR    = "#AE6B6B"
 SKIP     = "#555555"
+REVIEW   = "#C8924E"   # orange/ambre — catégorie « À revoir »
 
 QSS = f"""
 
@@ -57,6 +58,7 @@ QLabel#app_version {{
 /* ── Nav buttons ────────────────────────────────────────── */
 QPushButton#nav_grade,
 QPushButton#nav_compare,
+QPushButton#nav_classify,
 QPushButton#nav_rename {{
     background: transparent;
     color: {TEXT2};
@@ -71,6 +73,7 @@ QPushButton#nav_rename {{
 
 QPushButton#nav_grade:checked,
 QPushButton#nav_compare:checked,
+QPushButton#nav_classify:checked,
 QPushButton#nav_rename:checked {{
     color: {ACCENT};
     border-left: 2px solid {ACCENT};
@@ -79,6 +82,7 @@ QPushButton#nav_rename:checked {{
 
 QPushButton#nav_grade:hover:!checked,
 QPushButton#nav_compare:hover:!checked,
+QPushButton#nav_classify:hover:!checked,
 QPushButton#nav_rename:hover:!checked {{
     color: {TEXT1};
     background-color: {BG2};
