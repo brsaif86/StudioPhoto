@@ -29,8 +29,8 @@ class MainWindow(QMainWindow):
         self._cfg = cfg_store.load()
 
         self.setWindowTitle(FULL_NAME)
-        self.resize(1000, 720)
-        self.setMinimumSize(860, 620)
+        self.resize(1180, 760)
+        self.setMinimumSize(940, 620)
         self.setStyleSheet(QSS)
 
         self._build_ui()
@@ -152,11 +152,10 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.grade_panel)     # index 0
         self.stack.addWidget(self.rename_panel)    # index 1
         self.stack.addWidget(self.classify_panel)  # index 2
-        sc.addWidget(self.stack)
-        sc.addStretch()
+        sc.addWidget(self.stack, stretch=1)
 
         scroll.setWidget(scroll_content)
-        v.addWidget(scroll, stretch=1)
+        v.addWidget(scroll, stretch=4)
 
         # Action bar — widget dédié avec objectName pour le QSS
         self.action_bar = self._build_action_bar()
@@ -171,8 +170,9 @@ class MainWindow(QMainWindow):
         self.console = QTextEdit()
         self.console.setObjectName("console")
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(150)
-        self.console.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.console.setMinimumHeight(90)
+        self.console.setMaximumHeight(200)
+        self.console.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         v.addWidget(self.console, stretch=1)
 
         return col

@@ -20,7 +20,7 @@ from ui.compare_panel import BeforeAfterView, PreviewWorker, ProfileWorker
 class GradePanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._images: list[Path] = []
         self._preview_worker = None
         self._preview_token = 0
@@ -34,45 +34,57 @@ class GradePanel(QWidget):
         self._build()
 
     def _build(self) -> None:
-        root = QVBoxLayout(self)
+        # Disposition 2 colonnes : réglages (gauche, compact) | aperçu (droite)
+        root = QHBoxLayout(self)
         root.setContentsMargins(0, 4, 0, 0)
         root.setSpacing(16)
+        root.addWidget(self._build_controls_column())
+        root.addWidget(self._build_preview_column(), stretch=1)
 
-        # ── Dossiers ──────────────────────────────────────────────────────
+    # ── Colonne gauche : réglages compacts ──────────────────────────────────
+
+    def _build_controls_column(self) -> QWidget:
+        col = QWidget()
+        col.setObjectName("controls_col")
+        col.setMinimumWidth(300)
+        col.setMaximumWidth(360)
+        col.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        v = QVBoxLayout(col)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(14)
+
+        # ── Dossiers ───────────────────────────────────────────────────────
         folder_box = QGroupBox("DOSSIERS")
-        fl = QGridLayout(folder_box)
-        fl.setContentsMargins(16, 20, 16, 16)
-        fl.setSpacing(10)
-        fl.setColumnStretch(1, 1)
+        fv = QVBoxLayout(folder_box)
+        fv.setContentsMargins(14, 18, 14, 14)
+        fv.setSpacing(6)
 
-        self.src_edit = self._path_input("Chemin du dossier source…")
-        self.out_edit = self._path_input("Vide = sous-dossier _output dans la source")
+        self.src_edit = self._path_input("Dossier source…")
+        self.out_edit = self._path_input("Vide = _output dans la source")
         self.src_edit.editingFinished.connect(self.refresh_preview)
 
-        for row, (text, edit) in enumerate([
-            ("Source :", self.src_edit),
-            ("Sortie :", self.out_edit),
-        ]):
-            lbl = QLabel(text)
-            lbl.setObjectName("form_label")
-            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            browse = QPushButton("Parcourir…")
+        for caption, edit in [("Source", self.src_edit), ("Sortie", self.out_edit)]:
+            cap = QLabel(caption)
+            cap.setObjectName("form_label")
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            browse = QPushButton("…")
             browse.setObjectName("btn_browse")
+            browse.setFixedWidth(34)
             browse.setCursor(Qt.PointingHandCursor)
             browse.clicked.connect(lambda _, e=edit: self._browse(e))
-            fl.addWidget(lbl,    row, 0)
-            fl.addWidget(edit,   row, 1)
-            fl.addWidget(browse, row, 2)
+            row.addWidget(edit, stretch=1)
+            row.addWidget(browse)
+            fv.addWidget(cap)
+            fv.addLayout(row)
 
-        root.addWidget(folder_box)
+        v.addWidget(folder_box)
 
         # ── Options ────────────────────────────────────────────────────────
         opt_box = QGroupBox("OPTIONS")
-        ol = QGridLayout(opt_box)
-        ol.setContentsMargins(16, 20, 16, 16)
-        ol.setSpacing(12)
-        ol.setColumnStretch(1, 1)
-        ol.setColumnStretch(3, 1)
+        ov = QVBoxLayout(opt_box)
+        ov.setContentsMargins(14, 18, 14, 14)
+        ov.setSpacing(8)
 
         _dw = default_workers()
         self.suffix_edit  = QLineEdit(DEFAULT_SUFFIX)
@@ -84,49 +96,54 @@ class GradePanel(QWidget):
         self.quality_spin.setRange(60, 100)
         self.quality_spin.setValue(DEFAULT_QUALITY)
 
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(1, 1)
         for row, (text, widget) in enumerate([
-            ("Suffixe :",      self.suffix_edit),
-            ("Processus :",    self.workers_spin),
-            ("Qualité JPEG :", self.quality_spin),
+            ("Suffixe", self.suffix_edit),
+            ("Processus", self.workers_spin),
+            ("Qualité", self.quality_spin),
         ]):
             lbl = QLabel(text)
             lbl.setObjectName("form_label")
-            lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            ol.addWidget(lbl,    row, 0)
-            ol.addWidget(widget, row, 1)
+            grid.addWidget(lbl,    row, 0)
+            grid.addWidget(widget, row, 1)
+        ov.addLayout(grid)
 
         self.recursive_cb = QCheckBox("Récursif (sous-dossiers)")
-        self.skip_cb      = QCheckBox("Ignorer les images déjà traitées (reprise)")
-        self.coherent_cb  = QCheckBox("Uniformiser la série (profil moyen/dossier)")
+        self.skip_cb      = QCheckBox("Ignorer images déjà traitées")
+        self.coherent_cb  = QCheckBox("Uniformiser la série")
         self.coherent_cb.setToolTip(
-            "Calcule un réglage commun par dossier pour un rendu homogène\n"
-            "sur toute la série (corrige les variations d'exposition/couleur)."
+            "Réglage commun par dossier pour un rendu homogène sur toute la série."
         )
-        self.recursive_cb.setChecked(True)
-        self.skip_cb.setChecked(True)
-        self.coherent_cb.setChecked(True)
+        for cb in (self.recursive_cb, self.skip_cb, self.coherent_cb):
+            cb.setChecked(True)
+            ov.addWidget(cb)
+
         self.recursive_cb.toggled.connect(self.refresh_preview)
         self.suffix_edit.editingFinished.connect(self.refresh_preview)
         self.coherent_cb.toggled.connect(self._on_coherent_toggled)
 
-        ol.addWidget(self.recursive_cb, 0, 3)
-        ol.addWidget(self.skip_cb,      1, 3)
-        ol.addWidget(self.coherent_cb,  2, 3)
+        v.addWidget(opt_box)
+        v.addStretch()
+        return col
 
-        root.addWidget(opt_box)
+    # ── Colonne droite : aperçu ─────────────────────────────────────────────
 
-        # ── Aperçu avant / après ────────────────────────────────────────────
+    def _build_preview_column(self) -> QWidget:
         prev_box = QGroupBox("APERÇU  AVANT / APRÈS")
+        prev_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         pv = QVBoxLayout(prev_box)
-        pv.setContentsMargins(16, 20, 16, 14)
-        pv.setSpacing(10)
+        pv.setContentsMargins(14, 18, 14, 12)
+        pv.setSpacing(8)
 
-        # barre supérieure : bouton recharger + nom fichier + métriques
+        # barre supérieure : recharger + nom fichier + métriques
         top = QHBoxLayout()
         self.preview_btn = QPushButton("Charger l'aperçu")
         self.preview_btn.setObjectName("btn_browse")
         self.preview_btn.setCursor(Qt.PointingHandCursor)
-        self.preview_btn.setMinimumWidth(130)
+        self.preview_btn.setMinimumWidth(120)
         self.preview_btn.clicked.connect(self.refresh_preview)
         self.preview_name = QLabel("—")
         self.preview_name.setObjectName("progress_file")
@@ -139,8 +156,9 @@ class GradePanel(QWidget):
         top.addWidget(self.preview_info)
         pv.addLayout(top)
 
-        # vue comparateur (glisser le curseur central = comparer avant/après)
+        # vue comparateur (curseur central = avant/après)
         self.view = BeforeAfterView()
+        self.view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         pv.addWidget(self.view, stretch=1)
 
         # navigation entre les images du dossier
@@ -170,14 +188,14 @@ class GradePanel(QWidget):
         nav.addWidget(self.nav_index)
         pv.addLayout(nav)
 
-        hint = QLabel("Glisse le curseur central pour comparer avant/après · "
-                      "le curseur du bas (ou les flèches) passe d'une image à l'autre.")
+        hint = QLabel("Curseur central : comparer avant/après · "
+                      "curseur du bas / flèches : changer d'image.")
         hint.setObjectName("hint_label")
         hint.setWordWrap(True)
         pv.addWidget(hint)
 
         self._set_nav_enabled(False)
-        root.addWidget(prev_box, stretch=1)
+        return prev_box
 
     # ── Helpers UI ──────────────────────────────────────────────────────────
 
