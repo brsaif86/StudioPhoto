@@ -29,18 +29,37 @@ class PreviewWorker(QThread):
     done  = Signal(object, object, str, dict)   # (orig_px, graded_px, mode, metrics)
     error = Signal(str)
 
-    def __init__(self, path: Path, parent=None):
+    def __init__(self, path, profile: dict = None, parent=None):
         super().__init__(parent)
         self._path = path
+        self._profile = profile
 
     def run(self) -> None:
         try:
-            original, graded, mode, metrics = grade_preview(self._path)
+            original, graded, mode, metrics = grade_preview(
+                self._path, profile=self._profile
+            )
             self.done.emit(
                 _pil_to_qpixmap(original), _pil_to_qpixmap(graded), mode, metrics
             )
         except Exception as exc:
             self.error.emit(str(exc))
+
+
+class ProfileWorker(QThread):
+    """Calcule le profil moyen d'un dossier (mode série cohérente) hors UI."""
+    done = Signal(object)   # dict | None
+
+    def __init__(self, files: list, parent=None):
+        super().__init__(parent)
+        self._files = files
+
+    def run(self) -> None:
+        try:
+            from core.grading import compute_folder_profile
+            self.done.emit(compute_folder_profile(self._files))
+        except Exception:
+            self.done.emit(None)
 
 
 # ── Vue comparateur à curseur ──────────────────────────────────────────────────

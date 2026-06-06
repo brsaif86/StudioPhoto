@@ -217,12 +217,14 @@ def process_image(
 
 # ── Aperçu en mémoire (avant / après) ─────────────────────────────────────────
 
-def grade_preview(input_path: Path, max_dim: int = 1600):
+def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None):
     """Étalonne une image EN MÉMOIRE et retourne (original, graded, mode, metrics).
 
     - Ne sauvegarde rien sur disque (usage : prévisualisation UI).
     - Réduit l'image si elle dépasse max_dim (aperçu rapide, rendu identique
       visuellement à la pleine résolution car l'algo est par-pixel).
+    - profile : si fourni (mode « série cohérente »), pilote les décisions
+      adaptatives → l'aperçu reflète EXACTEMENT le rendu du lot uniformisé.
     Retourne (PIL.Image original, PIL.Image graded, str mode, dict metrics).
     """
     img = Image.open(input_path).convert("RGB")
@@ -243,9 +245,9 @@ def grade_preview(input_path: Path, max_dim: int = 1600):
         metrics = {}
     else:
         arr01  = arr255 / 255.0
-        metrics = analyze_image(arr01)
+        metrics = profile if profile else analyze_image(arr01)
         graded  = apply_color_grade(arr01, metrics)
-        mode    = "Couleur"
+        mode    = "Couleur" + ("·série" if profile else "")
 
     return original, graded, mode, metrics
 

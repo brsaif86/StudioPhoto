@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt, QTimer
 from core.grading import (
     DEFAULT_SUFFIX, DEFAULT_QUALITY, default_workers, list_source_images,
 )
-from ui.compare_panel import BeforeAfterView, PreviewWorker
+from ui.compare_panel import BeforeAfterView, PreviewWorker, ProfileWorker
 
 
 class GradePanel(QWidget):
@@ -24,6 +24,8 @@ class GradePanel(QWidget):
         self._images: list[Path] = []
         self._preview_worker = None
         self._preview_token = 0
+        self._profile = None              # profil de série (mode uniformiser)
+        self._profile_worker = None
         # debounce du chargement quand on déplace le curseur de navigation
         self._nav_timer = QTimer(self)
         self._nav_timer.setSingleShot(True)
@@ -105,6 +107,7 @@ class GradePanel(QWidget):
         self.coherent_cb.setChecked(True)
         self.recursive_cb.toggled.connect(self.refresh_preview)
         self.suffix_edit.editingFinished.connect(self.refresh_preview)
+        self.coherent_cb.toggled.connect(self._on_coherent_toggled)
 
         ol.addWidget(self.recursive_cb, 0, 3)
         ol.addWidget(self.skip_cb,      1, 3)
@@ -226,7 +229,29 @@ class GradePanel(QWidget):
         else:
             self.nav_index.setText(f"1 / {n}")
             self.preview_name.setText(self._images[0].name)
+            self._recompute_profile()      # (ré)calcule le profil si « uniformiser »
             self._load_current_preview()
+
+    # ── Profil de série (mode uniformiser) ──────────────────────────────────
+
+    def _on_coherent_toggled(self, _checked: bool) -> None:
+        self._recompute_profile()
+        self._load_current_preview()
+
+    def _recompute_profile(self) -> None:
+        """Calcule (hors UI) le profil moyen du dossier si « uniformiser » coché."""
+        if not (self.coherent_cb.isChecked() and self._images):
+            self._profile = None
+            return
+        self.preview_info.setText("Calcul du profil de série…")
+        worker = ProfileWorker(list(self._images))
+        worker.done.connect(self._on_profile_done)
+        self._profile_worker = worker
+        worker.start()
+
+    def _on_profile_done(self, profile) -> None:
+        self._profile = profile
+        self._load_current_preview()       # recharge avec le profil appliqué
 
     def _step(self, delta: int) -> None:
         self.nav_slider.setValue(
@@ -250,7 +275,9 @@ class GradePanel(QWidget):
         path = self._images[idx]
         self._preview_token += 1
         token = self._preview_token
-        worker = PreviewWorker(path)
+        # profil de série appliqué si « uniformiser » est coché
+        prof = self._profile if self.coherent_cb.isChecked() else None
+        worker = PreviewWorker(path, profile=prof)
         worker.done.connect(
             lambda o, g, m, met, t=token: self._on_preview_done(o, g, m, met, t)
         )
