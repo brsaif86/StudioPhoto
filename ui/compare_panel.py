@@ -1,21 +1,17 @@
 """
-ui/compare_panel.py — Aperçu comparatif Avant / Après
-======================================================
-Charge une image, l'étalonne en mémoire (core.grading.grade_preview) dans un
-thread, puis affiche un comparateur à curseur (split slider) Original | Étalonné.
+ui/compare_panel.py — Widgets d'aperçu comparatif Avant / Après
+================================================================
+Composants réutilisés par l'onglet Étalonnage :
+  - PreviewWorker   : étalonne une image EN MÉMOIRE dans un QThread.
+  - BeforeAfterView : vue à curseur (split slider) Original | Étalonné.
 """
 
-from pathlib import Path
-
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QFileDialog, QSizePolicy,
-)
+from PySide6.QtWidgets import QWidget, QSizePolicy
 from PySide6.QtCore import Qt, QThread, Signal, QPointF, QRectF
 from PySide6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QFont
 
-from core.grading import grade_preview, SUPPORTED_EXTENSIONS
-from ui.style import ACCENT, TEXT2, TEXT3, BG0
+from core.grading import grade_preview
+from ui.style import ACCENT, TEXT3, BG0
 
 
 # ── Conversion PIL → QPixmap ───────────────────────────────────────────────────
@@ -159,90 +155,3 @@ class BeforeAfterView(QWidget):
 
     def mouseReleaseEvent(self, e):
         self._dragging = False
-
-
-# ── Panneau complet ────────────────────────────────────────────────────────────
-
-class ComparePanel(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._worker = None
-        self._build()
-
-    def _build(self) -> None:
-        v = QVBoxLayout(self)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(14)
-
-        # Barre supérieure : bouton charger + infos
-        top = QHBoxLayout()
-        self.btn_load = QPushButton("Charger une image…")
-        self.btn_load.setObjectName("btn_browse")
-        self.btn_load.setCursor(Qt.PointingHandCursor)
-        self.btn_load.setMinimumWidth(160)
-        self.btn_load.clicked.connect(self._browse)
-
-        self.lbl_name = QLabel("Aucune image")
-        self.lbl_name.setObjectName("progress_file")
-
-        self.lbl_info = QLabel("")
-        self.lbl_info.setObjectName("hint_label")
-
-        top.addWidget(self.btn_load)
-        top.addSpacing(14)
-        top.addWidget(self.lbl_name)
-        top.addStretch()
-        top.addWidget(self.lbl_info)
-        v.addLayout(top)
-
-        # Vue comparateur
-        self.view = BeforeAfterView()
-        v.addWidget(self.view, stretch=1)
-
-        # Aide
-        hint = QLabel("Glisse le curseur central pour comparer · l'aperçu utilise "
-                      "exactement le même algorithme que le traitement par lot.")
-        hint.setObjectName("hint_label")
-        hint.setWordWrap(True)
-        v.addWidget(hint)
-
-    # ── Chargement ────────────────────────────────────────────────────────────
-    def _browse(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Choisir une image",
-            "", "Images (*.jpg *.jpeg *.JPG *.JPEG)"
-        )
-        if path:
-            self.load_image(Path(path))
-
-    def load_image(self, path: Path) -> None:
-        if path.suffix not in SUPPORTED_EXTENSIONS:
-            self.lbl_info.setText("Format non supporté (JPEG uniquement)")
-            return
-        self.lbl_name.setText(path.name)
-        self.lbl_info.setText("Étalonnage en cours…")
-        self.btn_load.setEnabled(False)
-
-        self._worker = PreviewWorker(path)
-        self._worker.done.connect(self._on_done)
-        self._worker.error.connect(self._on_error)
-        self._worker.start()
-
-    def _on_done(self, orig_px, graded_px, mode: str, metrics: dict) -> None:
-        self.view.set_images(orig_px, graded_px)
-        self.btn_load.setEnabled(True)
-        if metrics:
-            lum = metrics.get("mean_lum", 0)
-            lum_label = ("sombre" if lum < 0.45 else "moyenne" if lum < 0.60 else "lumineuse")
-            self.lbl_info.setText(
-                f"{mode}  ·  lum: {lum_label}  ·  "
-                f"cast: {metrics.get('warm_cast', 0):+.2f}  ·  "
-                f"hl: {metrics.get('highlight_ratio', 0):.0%}"
-            )
-        else:
-            self.lbl_info.setText(f"{mode}  ·  traitement doux (lift + S-curve)")
-
-    def _on_error(self, msg: str) -> None:
-        self.btn_load.setEnabled(True)
-        self.lbl_info.setText(f"Erreur : {msg}")
-        self.view.clear()

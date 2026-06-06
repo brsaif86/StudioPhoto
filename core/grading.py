@@ -313,6 +313,22 @@ def collect_grade_tasks(
     return tasks
 
 
+def list_source_images(folder: Path, suffix: str, recursive: bool) -> list:
+    """Liste les images source d'un dossier (mêmes exclusions que la collecte).
+
+    Sert à la prévisualisation : on ne veut pas inclure les fichiers déjà
+    étalonnés (suffixe), les parasites macOS ni le dossier _output.
+    """
+    candidates = folder.rglob("*") if recursive else folder.iterdir()
+    return sorted(
+        p for p in candidates
+        if p.suffix in SUPPORTED_EXTENSIONS
+        and suffix not in p.stem
+        and not p.name.startswith("._")
+        and "_output" not in p.parts
+    )
+
+
 def compute_folder_profile(files: list, sample_max: int = 40, max_dim: int = 600):
     """Calcule les métriques MOYENNES d'un ensemble d'images couleur.
 

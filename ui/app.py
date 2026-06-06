@@ -16,7 +16,6 @@ from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor, QFont
 from core import config as cfg_store
 from ui.grade_panel import GradePanel
 from ui.rename_panel import RenamePanel
-from ui.compare_panel import ComparePanel
 from ui.classify_panel import ClassifyPanel
 from ui.workers import GradeWorker, RenameWorker, ClassifyWorker
 from ui.style import QSS, ACCENT, SUCCESS, ERROR, SKIP, REVIEW, TEXT2, TEXT3
@@ -77,12 +76,10 @@ class MainWindow(QMainWindow):
 
         # Nav
         self.nav_grade    = QPushButton("ÉTALONNAGE")
-        self.nav_compare  = QPushButton("APERÇU")
         self.nav_classify = QPushButton("CLASSIFICATION")
         self.nav_rename   = QPushButton("RENOMMAGE")
         for btn, name in [
             (self.nav_grade,    "nav_grade"),
-            (self.nav_compare,  "nav_compare"),
             (self.nav_classify, "nav_classify"),
             (self.nav_rename,   "nav_rename"),
         ]:
@@ -94,9 +91,8 @@ class MainWindow(QMainWindow):
 
         self.nav_grade.setChecked(True)
         self.nav_grade.clicked.connect(lambda: self._switch(0))
-        self.nav_compare.clicked.connect(lambda: self._switch(1))
-        self.nav_classify.clicked.connect(lambda: self._switch(3))
-        self.nav_rename.clicked.connect(lambda: self._switch(2))
+        self.nav_classify.clicked.connect(lambda: self._switch(2))
+        self.nav_rename.clicked.connect(lambda: self._switch(1))
 
         v.addStretch()
         v.addWidget(self._hline())
@@ -151,13 +147,11 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.grade_panel    = GradePanel()
-        self.compare_panel  = ComparePanel()
         self.rename_panel   = RenamePanel()
         self.classify_panel = ClassifyPanel()
         self.stack.addWidget(self.grade_panel)     # index 0
-        self.stack.addWidget(self.compare_panel)   # index 1
-        self.stack.addWidget(self.rename_panel)    # index 2
-        self.stack.addWidget(self.classify_panel)  # index 3
+        self.stack.addWidget(self.rename_panel)    # index 1
+        self.stack.addWidget(self.classify_panel)  # index 2
         sc.addWidget(self.stack)
         sc.addStretch()
 
@@ -265,15 +259,8 @@ class MainWindow(QMainWindow):
     def _switch(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)
         self.nav_grade.setChecked(idx == 0)
-        self.nav_compare.setChecked(idx == 1)
-        self.nav_rename.setChecked(idx == 2)
-        self.nav_classify.setChecked(idx == 3)
-        # L'onglet Aperçu n'a pas de lot à lancer : on masque la barre d'action
-        is_compare = (idx == 1)
-        self.action_bar.setVisible(not is_compare)
-        # Pré-remplit l'aperçu avec une image du dossier source si dispo
-        if is_compare:
-            self._prefill_compare()
+        self.nav_rename.setChecked(idx == 1)
+        self.nav_classify.setChecked(idx == 2)
 
     # ── Run / Cancel ──────────────────────────────────────────────────────────
 
@@ -281,25 +268,10 @@ class MainWindow(QMainWindow):
         idx = self.stack.currentIndex()
         if idx == 0:
             self._start_grading()
-        elif idx == 2:
+        elif idx == 1:
             self._start_renaming()
-        elif idx == 3:
+        elif idx == 2:
             self._start_classify()
-
-    def _prefill_compare(self) -> None:
-        """Charge la première image JPEG du dossier source dans l'aperçu."""
-        if getattr(self.compare_panel.view, "_orig", None):
-            return  # déjà une image chargée
-        params = self.grade_panel.get_params()
-        folder = params.get("folder")
-        if not folder or not folder.is_dir():
-            return
-        from core.grading import SUPPORTED_EXTENSIONS
-        for p in sorted(folder.iterdir()):
-            if p.suffix in SUPPORTED_EXTENSIONS and not p.name.startswith("._") \
-                    and params["suffix"] not in p.stem:
-                self.compare_panel.load_image(p)
-                break
 
     def _start_grading(self) -> None:
         params = self.grade_panel.get_params()
