@@ -44,6 +44,11 @@ def main() -> int:
     has_sq  = (ROOT / "app_icon_square.png").exists()
 
     # 3. Arguments PyInstaller
+    # Dépendances DEV uniquement (export des assets) — jamais dans l'exe.
+    DEV_ONLY = [
+        "torch", "torchvision", "torchaudio", "open_clip", "open_clip_torch",
+        "onnx", "onnxscript", "transformers", "sympy", "scipy",
+    ]
     args = [
         sys.executable, "-m", "PyInstaller",
         "--onefile", "--windowed", "--noconfirm",
@@ -52,6 +57,8 @@ def main() -> int:
         "--add-data", f"ui{SEP}ui",
         "--add-data", f"version.py{SEP}.",
     ]
+    for mod in DEV_ONLY:
+        args += ["--exclude-module", mod]
     if has_ico:
         args += ["--icon", "app_icon.ico", "--add-data", f"app_icon.ico{SEP}."]
     if has_sq:
