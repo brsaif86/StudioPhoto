@@ -1,45 +1,25 @@
 @echo off
-REM Se place dans le dossier du script, quel que soit l'endroit d'où il est lancé
+REM Lance le build via le script Python robuste (évite les pièges de cmd).
+REM Double-clic possible : la fenêtre reste ouverte grâce à pause.
 cd /d "%~dp0"
 
-REM Pré-requis : pip install pyinstaller PySide6 Pillow numpy psutil
-
-REM Lecture de la version depuis version.py
-for /f "delims=" %%v in ('python -c "from version import __version__; print(__version__)"') do set VERSION=%%v
-set EXE_NAME=StudioPhoto-%VERSION%
-echo Version detectee : %VERSION%
-
-REM (Re)génère l'icône carrée ICO + PNG à chaque build
-if exist app_icon.png (
-    echo Generation de l'icone carree (ICO + PNG)...
-    python make_ico.py
+where python >nul 2>&1
+if errorlevel 1 (
+    echo [ERREUR] Python introuvable dans le PATH.
+    echo Installe Python 3.11+ et coche "Add to PATH", puis relance.
+    echo.
+    pause
+    exit /b 1
 )
 
-REM Build PyInstaller
-if exist app_icon.ico (
-    python -m PyInstaller ^
-      --onefile ^
-      --windowed ^
-      --name "%EXE_NAME%" ^
-      --icon app_icon.ico ^
-      --add-data "core;core" ^
-      --add-data "ui;ui" ^
-      --add-data "version.py;." ^
-      --add-data "app_icon.ico;." ^
-      --add-data "app_icon_square.png;." ^
-      ui_entry.py
-) else (
-    echo Attention: app_icon.ico absent, build sans icone personnalisee.
-    python -m PyInstaller ^
-      --onefile ^
-      --windowed ^
-      --name "%EXE_NAME%" ^
-      --add-data "core;core" ^
-      --add-data "ui;ui" ^
-      --add-data "version.py;." ^
-      ui_entry.py
-)
+python build.py
+set BUILD_RC=%errorlevel%
 
 echo.
-echo Build termine : dist\%EXE_NAME%.exe
+if "%BUILD_RC%"=="0" (
+    echo Build termine avec succes.
+) else (
+    echo Le build a echoue (code %BUILD_RC%^).
+)
+echo.
 pause
