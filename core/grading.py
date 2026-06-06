@@ -174,6 +174,7 @@ def process_image(
     skip_existing: bool = True,
     quality: int = DEFAULT_QUALITY,
     profile: dict = None,
+    edit=None,
 ) -> str:
     """Traite une image et retourne un message de statut.
 
@@ -181,8 +182,8 @@ def process_image(
     - Skip si la sortie existe déjà
     - Libération mémoire explicite
     - profile : si fourni (mode « série cohérente »), pilote les décisions
-      adaptatives à partir des métriques MOYENNES du dossier → rendu uniforme
-      sur toute la série (les masques peau/blancs restent par-image).
+      adaptatives à partir des métriques MOYENNES du dossier.
+    - edit : EditParams (preset + corrections). None/neutre = étalonnage v3.
     """
     try:
         if skip_existing and output_path.exists():
@@ -191,22 +192,33 @@ def process_image(
         img = Image.open(input_path).convert("RGB")
         arr255 = np.asarray(img, dtype=np.float32)
 
-        if is_grayscale(arr255):
-            arr01  = arr255 / 255.0
-            graded = apply_bw_grade(arr01)
-            mode   = "N&B"
-            info   = ""
+        neutral = edit is None or getattr(edit, "is_neutral", lambda: True)()
+        if neutral:
+            # ── Chemin v3 strict (lot par défaut) — inchangé ──
+            if is_grayscale(arr255):
+                arr01  = arr255 / 255.0
+                graded = apply_bw_grade(arr01)
+                mode   = "N&B"
+                info   = ""
+            else:
+                arr01  = arr255 / 255.0
+                m      = profile if profile else analyze_image(arr01)
+                graded = apply_color_grade(arr01, m)
+                mode   = "Couleur" + ("·série" if profile else "")
+                lum_label = (
+                    "sombre"    if m["mean_lum"] < 0.45 else
+                    "moyenne"   if m["mean_lum"] < 0.60 else
+                    "lumineuse"
+                )
+                info = f"  | lum:{lum_label} cast:{m['warm_cast']:+.2f} hl:{m['highlight_ratio']:.0%}"
         else:
-            arr01  = arr255 / 255.0
-            m      = profile if profile else analyze_image(arr01)
-            graded = apply_color_grade(arr01, m)
-            mode   = "Couleur" + ("·série" if profile else "")
-            lum_label = (
-                "sombre"    if m["mean_lum"] < 0.45 else
-                "moyenne"   if m["mean_lum"] < 0.60 else
-                "lumineuse"
-            )
-            info = f"  | lum:{lum_label} cast:{m['warm_cast']:+.2f} hl:{m['highlight_ratio']:.0%}"
+            # ── Éditeur v3.0 : preset + corrections manuelles ──
+            from core.adjustments import render_with_profile
+            arr01 = arr255 / 255.0
+            out01 = render_with_profile(arr01, edit, profile)
+            graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
+            mode = edit.preset
+            info = "  | édité"
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         graded.save(str(output_path), quality=quality, subsampling=0)
@@ -220,14 +232,14 @@ def process_image(
 
 # ── Aperçu en mémoire (avant / après) ─────────────────────────────────────────
 
-def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None):
+def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None,
+                  edit=None):
     """Étalonne une image EN MÉMOIRE et retourne (original, graded, mode, metrics).
 
     - Ne sauvegarde rien sur disque (usage : prévisualisation UI).
-    - Réduit l'image si elle dépasse max_dim (aperçu rapide, rendu identique
-      visuellement à la pleine résolution car l'algo est par-pixel).
-    - profile : si fourni (mode « série cohérente »), pilote les décisions
-      adaptatives → l'aperçu reflète EXACTEMENT le rendu du lot uniformisé.
+    - Réduit l'image si elle dépasse max_dim (aperçu rapide).
+    - profile : mode « série cohérente » (preset Naturel).
+    - edit : EditParams (preset + corrections). None/neutre = v3.
     Retourne (PIL.Image original, PIL.Image graded, str mode, dict metrics).
     """
     img = Image.open(input_path).convert("RGB")
@@ -240,17 +252,23 @@ def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None):
 
     original = img.copy()
     arr255 = np.asarray(img, dtype=np.float32)
+    arr01  = arr255 / 255.0
 
-    if is_grayscale(arr255):
-        arr01  = arr255 / 255.0
-        graded = apply_bw_grade(arr01)
-        mode   = "N&B"
-        metrics = {}
+    neutral = edit is None or getattr(edit, "is_neutral", lambda: True)()
+    if neutral:
+        if is_grayscale(arr255):
+            graded = apply_bw_grade(arr01)
+            mode, metrics = "N&B", {}
+        else:
+            metrics = profile if profile else analyze_image(arr01)
+            graded  = apply_color_grade(arr01, metrics)
+            mode    = "Couleur" + ("·série" if profile else "")
     else:
-        arr01  = arr255 / 255.0
+        from core.adjustments import render_with_profile
+        out01  = render_with_profile(arr01, edit, profile)
+        graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
+        mode   = edit.preset
         metrics = profile if profile else analyze_image(arr01)
-        graded  = apply_color_grade(arr01, metrics)
-        mode    = "Couleur" + ("·série" if profile else "")
 
     return original, graded, mode, metrics
 
@@ -282,9 +300,9 @@ def _ensure_std_streams() -> None:
 def _grade_worker(args: tuple) -> str:
     """Wrapper picklable pour mp.Pool."""
     _ensure_std_streams()
-    input_path, output_path, skip_existing, quality, profile = args
+    input_path, output_path, skip_existing, quality, profile, edit = args
     return process_image(
-        Path(input_path), Path(output_path), skip_existing, quality, profile
+        Path(input_path), Path(output_path), skip_existing, quality, profile, edit
     )
 
 
@@ -299,12 +317,16 @@ def collect_grade_tasks(
     quality: int = DEFAULT_QUALITY,
     coherent_series: bool = False,
     on_log=None,
+    edit_global=None,
+    edits_by_path: dict = None,
 ) -> list:
-    """Retourne la liste des tuples (input, output, skip, quality, profile).
+    """Retourne la liste des tuples (input, output, skip, quality, profile, edit).
 
-    Si coherent_series=True, un profil moyen est calculé PAR DOSSIER et attaché
-    à chaque image de ce dossier (rendu uniforme sur la série).
+    - coherent_series=True : profil moyen calculé PAR DOSSIER (rendu uniforme).
+    - edit_global : EditParams appliqué à toutes les images sans surcharge.
+    - edits_by_path : {str(chemin): EditParams} surcharges par image.
     """
+    edits_by_path = edits_by_path or {}
     candidates = folder.rglob("*") if recursive else folder.iterdir()
 
     files = sorted([
@@ -341,7 +363,10 @@ def collect_grade_tasks(
                 input_path.stem + suffix + input_path.suffix
             )
         profile = profiles.get(input_path.parent) if coherent_series else None
-        tasks.append((str(input_path), str(out_path), skip_existing, quality, profile))
+        edit = edits_by_path.get(str(input_path), edit_global)
+        tasks.append(
+            (str(input_path), str(out_path), skip_existing, quality, profile, edit)
+        )
     return tasks
 
 

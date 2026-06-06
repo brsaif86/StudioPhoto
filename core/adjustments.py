@@ -242,16 +242,33 @@ _LOOKS = {
 
 # ── Rendu unifié ──────────────────────────────────────────────────────────────
 
-def render(arr01: np.ndarray, params: EditParams, grain_seed=None) -> np.ndarray:
-    """Applique le preset puis les corrections manuelles. Retourne un array 0..1.
+def render_with_profile(arr01: np.ndarray, params: EditParams,
+                        profile: dict = None, grain_seed=None) -> np.ndarray:
+    """Rendu unifié intégrant le profil de série (mode « uniformiser »).
 
-    arr01 : image source normalisée 0..1 (non modifiée).
+    - preset « Naturel » : base = étalonnage v3, piloté par le profil dossier
+      si fourni (rendu uniforme sur la série) ; sinon métriques par image.
+    - autres presets : look créatif autonome (le profil ne s'applique pas).
+    Puis corrections manuelles par-dessus.
     """
-    look = _LOOKS.get(params.preset, look_naturel)
-    out = look(arr01)
+    if params.preset == DEFAULT_PRESET:
+        arr255 = arr01 * 255.0
+        if is_grayscale(arr255):
+            base = np.asarray(apply_bw_grade(arr01.copy()), dtype=np.float32) / 255.0
+        else:
+            m = profile if profile else analyze_image(arr01)
+            base = np.asarray(apply_color_grade(arr01.copy(), m), dtype=np.float32) / 255.0
+    else:
+        base = _LOOKS.get(params.preset, look_naturel)(arr01)
+
     if not (params.preset == DEFAULT_PRESET and _all_sliders_zero(params)):
-        out = apply_manual(out, params, grain_seed=grain_seed)
-    return out
+        base = apply_manual(base, params, grain_seed=grain_seed)
+    return base
+
+
+def render(arr01: np.ndarray, params: EditParams, grain_seed=None) -> np.ndarray:
+    """Rendu sans profil de série (aperçu simple). Retourne un array 0..1."""
+    return render_with_profile(arr01, params, profile=None, grain_seed=grain_seed)
 
 
 def _all_sliders_zero(p: EditParams) -> bool:

@@ -136,7 +136,7 @@ def cmd_benchmark(args) -> None:
         from core.grading import _grade_worker
         with tempfile.TemporaryDirectory() as tmpdir:
             tasks_tmp = [
-                (t[0], str(Path(tmpdir) / Path(t[0]).name), False, DEFAULT_QUALITY, None)
+                (t[0], str(Path(tmpdir) / Path(t[0]).name), False, DEFAULT_QUALITY, None, None)
                 for t in sample
             ]
 

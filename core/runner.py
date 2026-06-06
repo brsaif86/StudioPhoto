@@ -22,6 +22,8 @@ def run_grade_batch(
     workers: int = 6,
     quality: int = DEFAULT_QUALITY,
     coherent_series: bool = True,
+    edit_global=None,
+    edits_by_path: dict = None,
     on_log: Callable[[str], None] = print,
     on_progress: Callable[[int, int], None] = None,
     on_current: Callable[[str, str], None] = None,  # (folder_name, file_name)
@@ -41,6 +43,7 @@ def run_grade_batch(
     tasks = collect_grade_tasks(
         folder, suffix, output_dir, recursive, skip_existing, quality,
         coherent_series, on_log=on_log,
+        edit_global=edit_global, edits_by_path=edits_by_path,
     )
     total = len(tasks)
     if total == 0:
