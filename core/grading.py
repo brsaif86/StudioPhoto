@@ -217,7 +217,7 @@ def process_image(
             arr01 = arr255 / 255.0
             out01 = render_with_profile(arr01, edit, profile)
             graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
-            mode = edit.preset
+            mode = edit.label()
             info = "  | édité"
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -267,7 +267,7 @@ def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None,
         from core.adjustments import render_with_profile
         out01  = render_with_profile(arr01, edit, profile)
         graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
-        mode   = edit.preset
+        mode   = edit.label()
         metrics = profile if profile else analyze_image(arr01)
 
     return original, graded, mode, metrics

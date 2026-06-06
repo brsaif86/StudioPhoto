@@ -16,7 +16,7 @@ Règle d'or : preset « Naturel » + tous les curseurs à 0 == sortie v3 identiq
 au pixel près (le traitement par lot par défaut ne change pas).
 """
 
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, field, fields
 
 import numpy as np
 from PIL import Image, ImageFilter
@@ -25,16 +25,25 @@ from core.grading import (
     analyze_image, apply_color_grade, apply_bw_grade, is_grayscale,
 )
 
-PRESETS = ["Naturel", "Cinématique", "Noir & Blanc", "Vintage", "Golden Hour", "Froid"]
 DEFAULT_PRESET = "Naturel"
+BASE_PRESETS = ["Naturel", "Noir & Blanc"]                 # correction de base
+LOOK_PRESETS = ["Cinématique", "Vintage", "Golden Hour", "Froid"]   # looks empilables
+PRESETS = ["Naturel", "Cinématique", "Noir & Blanc", "Vintage", "Golden Hour", "Froid"]
+
+_SLIDER_NAMES = ("exposure", "contrast", "highlights", "shadows",
+                 "saturation", "temperature", "sharpness", "grain")
 
 
 # ── Paramètres d'édition ──────────────────────────────────────────────────────
 
 @dataclass
 class EditParams:
-    """État d'édition : preset + 8 curseurs (chacun dans -100..100, 0 = neutre)."""
-    preset:      str   = DEFAULT_PRESET
+    """État d'édition : liste de presets EMPILÉS + 8 curseurs (-100..100, 0 neutre).
+
+    presets = une base (Naturel ou Noir & Blanc) + 0..N looks créatifs.
+    Ex. ["Naturel", "Cinématique"] = correction v3 puis grade cinéma.
+    """
+    presets:     list  = field(default_factory=lambda: [DEFAULT_PRESET])
     exposure:    float = 0.0
     contrast:    float = 0.0
     highlights:  float = 0.0
@@ -45,20 +54,38 @@ class EditParams:
     grain:       float = 0.0
 
     def is_neutral(self) -> bool:
-        """True si preset Naturel et tous les curseurs à 0 (= v3 strict)."""
-        return self.preset == DEFAULT_PRESET and all(
-            getattr(self, f.name) == 0.0 for f in fields(self) if f.name != "preset"
-        )
+        """True si presets == [Naturel] et tous les curseurs à 0 (= v3 strict)."""
+        return list(self.presets) == [DEFAULT_PRESET] and self._sliders_zero()
+
+    def _sliders_zero(self) -> bool:
+        return all(getattr(self, n) == 0.0 for n in _SLIDER_NAMES)
+
+    def base(self) -> str:
+        return "Noir & Blanc" if "Noir & Blanc" in self.presets else "Naturel"
+
+    def looks(self) -> list:
+        return [p for p in LOOK_PRESETS if p in self.presets]
+
+    def label(self) -> str:
+        return " + ".join(self.presets) if self.presets else DEFAULT_PRESET
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["presets"] = list(self.presets)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "EditParams":
         if not d:
             return cls()
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in d.items() if k in known})
+        kw = {k: v for k, v in d.items() if k in known}
+        if "presets" in kw and not kw["presets"]:
+            kw["presets"] = [DEFAULT_PRESET]
+        # rétro-compat : ancien champ unique « preset »
+        if "presets" not in kw and "preset" in d:
+            kw["presets"] = [d["preset"]]
+        return cls(**kw)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -244,35 +271,37 @@ _LOOKS = {
 
 def render_with_profile(arr01: np.ndarray, params: EditParams,
                         profile: dict = None, grain_seed=None) -> np.ndarray:
-    """Rendu unifié intégrant le profil de série (mode « uniformiser »).
+    """Rendu unifié : base (Naturel/N&B) PUIS looks empilés PUIS corrections.
 
-    - preset « Naturel » : base = étalonnage v3, piloté par le profil dossier
-      si fourni (rendu uniforme sur la série) ; sinon métriques par image.
-    - autres presets : look créatif autonome (le profil ne s'applique pas).
-    Puis corrections manuelles par-dessus.
+    - base « Naturel » : étalonnage v3, piloté par le profil dossier si fourni
+      (rendu uniforme sur la série) ; sinon métriques par image.
+    - base « Noir & Blanc » : conversion N&B.
+    - looks créatifs (Cinématique, Vintage, Golden Hour, Froid) appliqués dans
+      l'ordre, par-dessus la base.
+    - puis les 8 corrections manuelles.
     """
-    if params.preset == DEFAULT_PRESET:
+    base = params.base()
+    if base == "Noir & Blanc":
+        out = look_bw(arr01)
+    else:
         arr255 = arr01 * 255.0
         if is_grayscale(arr255):
-            base = np.asarray(apply_bw_grade(arr01.copy()), dtype=np.float32) / 255.0
+            out = np.asarray(apply_bw_grade(arr01.copy()), dtype=np.float32) / 255.0
         else:
             m = profile if profile else analyze_image(arr01)
-            base = np.asarray(apply_color_grade(arr01.copy(), m), dtype=np.float32) / 255.0
-    else:
-        base = _LOOKS.get(params.preset, look_naturel)(arr01)
+            out = np.asarray(apply_color_grade(arr01.copy(), m), dtype=np.float32) / 255.0
 
-    if not (params.preset == DEFAULT_PRESET and _all_sliders_zero(params)):
-        base = apply_manual(base, params, grain_seed=grain_seed)
-    return base
+    for look in params.looks():
+        out = _LOOKS[look](out)
+
+    if not params.is_neutral():
+        out = apply_manual(out, params, grain_seed=grain_seed)
+    return out
 
 
 def render(arr01: np.ndarray, params: EditParams, grain_seed=None) -> np.ndarray:
     """Rendu sans profil de série (aperçu simple). Retourne un array 0..1."""
     return render_with_profile(arr01, params, profile=None, grain_seed=grain_seed)
-
-
-def _all_sliders_zero(p: EditParams) -> bool:
-    return all(getattr(p, f.name) == 0.0 for f in fields(p) if f.name != "preset")
 
 
 def render_to_image(arr01: np.ndarray, params: EditParams, grain_seed=None) -> Image.Image:

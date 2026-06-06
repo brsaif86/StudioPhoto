@@ -491,8 +491,14 @@ QSlider::handle:horizontal:hover {{
     background: #D4B87A;
 }}
 
+/* groove neutre (pas de remplissage directionnel) : la poignée seule
+   indique la valeur → curseur bipolaire « centré » sur 0. */
 QSlider::sub-page:horizontal {{
-    background: #4A4030;
+    background: {BG3};
+    border-radius: 1px;
+}}
+QSlider::add-page:horizontal {{
+    background: {BG3};
     border-radius: 1px;
 }}
 

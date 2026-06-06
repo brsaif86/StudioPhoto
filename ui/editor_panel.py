@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
-from core.adjustments import EditParams, PRESETS, DEFAULT_PRESET
+from core.adjustments import EditParams, PRESETS, DEFAULT_PRESET, BASE_PRESETS, LOOK_PRESETS
 
 # (attribut EditParams, libellé affiché)
 SLIDERS = [
@@ -119,7 +119,7 @@ class EditorPanel(QWidget):
         root.addStretch()
 
         # ── Boutons ────────────────────────────────────────────────────────
-        self.btn_export = QPushButton("⬇  Télécharger le résultat")
+        self.btn_export = QPushButton("💾  Enregistrer les modifications")
         self.btn_export.setObjectName("btn_run")
         self.btn_export.setCursor(Qt.PointingHandCursor)
         self.btn_export.clicked.connect(self.export_requested.emit)
@@ -159,7 +159,20 @@ class EditorPanel(QWidget):
     def _on_preset(self, name: str) -> None:
         if self._loading:
             return
-        self._target().preset = name
+        tgt = self._target()
+        presets = list(tgt.presets)
+        if name in BASE_PRESETS:
+            # base exclusive : remplace l'ancienne base, garde les looks
+            presets = [name] + [p for p in presets if p in LOOK_PRESETS]
+        else:
+            # look additif : on/off
+            if name in presets:
+                presets.remove(name)
+            else:
+                presets.append(name)
+            if not any(b in presets for b in BASE_PRESETS):
+                presets.insert(0, DEFAULT_PRESET)   # toujours une base
+        tgt.presets = presets
         self._sync_ui()
         self.changed.emit()
 
@@ -193,7 +206,7 @@ class EditorPanel(QWidget):
         p = self.current_edit() if (not self.scope_cb.isChecked()) else self._global
         self._loading = True
         for name, b in self._preset_btns.items():
-            b.setChecked(name == p.preset)
+            b.setChecked(name in p.presets)
         for attr, s in self._sliders.items():
             v = int(getattr(p, attr))
             s.setValue(v)
