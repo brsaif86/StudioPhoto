@@ -1,13 +1,19 @@
 # StudioPhoto
 
-Application photo autonome (Windows / macOS) regroupant **4 outils** :
+Application photo autonome (Windows / macOS) — interface à **onglets en haut**,
+3 modules :
 
-1. **Étalonnage adaptatif v3** — couleur + N&B, multiprocessing, anti-surexposition,
-   mode série cohérente, blancs neutres. Reprise de lot.
-2. **Aperçu** — comparateur avant/après à curseur (rendu identique au lot).
-3. **Classification / Tri auto** — zero-shot CLIP (OpenCV + onnxruntime, sans torch
+1. **Étalonnage** — éditeur interactif avec aperçu avant/après intégré :
+   - base adaptative v3 (couleur + N&B, anti-surexposition, blancs neutres, peau
+     naturelle) + **mode série cohérente** (rendu uniforme par dossier) ;
+   - **presets empilables** (Naturel, Cinématique, Clair & Aéré, Peau douce,
+     Vintage, Golden Hour, Froid, Noir & Blanc) ;
+   - **corrections manuelles** (12 curseurs) ; **presets personnalisés** ;
+     **pipette balance des blancs** ; **LUT 3D `.cube`** + vibrance ;
+   - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
+2. **Classification / Tri auto** — zero-shot CLIP (OpenCV + onnxruntime, sans torch
    au runtime) en 6 catégories de mariage + « À revoir ».
-4. **Renommage séquentiel** — par dossier, two-pass, dry-run, reprise.
+3. **Renommage séquentiel** — par dossier, two-pass, dry-run, reprise.
 
 Version courante : voir `version.py` (`__version__`). Le titre de la fenêtre, le nom
 de l'exe et les artefacts CI en découlent.
@@ -34,7 +40,35 @@ Pillow  numpy  PySide6  psutil  opencv-python-headless  onnxruntime  pyinstaller
 python ui_entry.py
 ```
 
-Sidebar : **Étalonnage · Aperçu · Classification · Renommage**.
+Onglets en haut : **Étalonnage · Classification · Renommage**.
+Disposition Étalonnage : aperçu (≈60 %) | éditeur (≈40 %) en haut ; en bas,
+Dossiers + Options + LANCER/ANNULER à gauche, console à droite.
+
+---
+
+## Éditeur d'étalonnage (onglet Étalonnage)
+
+| Bloc | Détail |
+|------|--------|
+| **Presets automatiques** | Empilables : 1 base (Naturel = v3, ou Noir & Blanc) + N looks (Cinématique, Clair & Aéré, Peau douce, Vintage, Golden Hour, Froid). Ex. *Naturel + Cinématique*. |
+| **Mes presets** | Sauver / appliquer / supprimer ses propres réglages (persistés en config). |
+| **Corrections manuelles** | 12 curseurs bipolaires (0 = neutre) : Exposition, Contraste, Hautes lumières, Ombres, Température, Teinte, Vibrance, Saturation, Clarté, Netteté, Vignettage, Grain. |
+| **Pipette BdB** | Clic sur une zone neutre de l'aperçu → corrige automatiquement la balance des blancs (température + teinte). |
+| **Rendu & LUT** | Sélection d'une LUT 3D `.cube` (dossier `assets/luts/`), intensité 0–100 %, vibrance. |
+| **Portée** | « Appliquer à toute la série » (global) ou réglage **par image** (surcharge). |
+| **Réinitialiser** | Revient à la **photo originale** (aucun preset, curseurs à 0). |
+| **Enregistrer les modifications** | Exporte l'image courante avec les réglages actifs. |
+
+Invariant : **Naturel seul + curseurs à 0 = étalonnage v3 strict** (le lot par
+défaut ne change pas). L'aperçu reflète exactement le rendu du lot (profil de
+série inclus).
+
+### LUT 3D `.cube`
+
+Moteur `core/lut_engine.py` : lecture `.cube` standard, interpolation trilinéaire
+vectorisée (NumPy), cache par `(dossier, nom)`. Dépose tes `.cube` dans
+`assets/luts/`. Pipeline : étalonnage → **LUT** → vibrance. `assets/luts/Identity.cube`
+fourni par défaut.
 
 ---
 
@@ -108,9 +142,15 @@ pytest tests/ -v
 
 - `test_grading.py` — étalonnage v3 (dont régression pixel `RMSE < 2/255`,
   blancs neutres, anti-surexposition, profil série).
+- `test_adjustments.py` — éditeur : invariant *Naturel+0 = v3*, presets
+  empilés, corrections manuelles, sérialisation, « Original ».
+- `test_lut_engine.py` — LUT `.cube` (chargement, ordre R/G/B, interpolation,
+  cache, blend d'intensité, vibrance, non-régression sans LUT).
 - `test_renaming.py` — renommage (2 passes, dry-run, reprise, trous).
 - `test_classification.py` — preprocess, softmax/seuil, mapping, manifest,
   isolation des images corrompues.
+
+> 68 tests au total.
 
 ---
 
@@ -213,28 +253,34 @@ Sur tag, une **Release GitHub** est créée avec les artefacts (`if: always()`).
 ```
 core/                      moteur pur, AUCUNE dépendance UI
   grading.py               algo v3 + anti-surexpo + profil série + default_workers()
+  adjustments.py           éditeur : EditParams, presets/looks, corrections
+                           manuelles, render_with_profile (+ LUT/vibrance)
+  lut_engine.py            LUT 3D .cube (chargement, interp. trilinéaire, cache,
+                           vibrance) — numpy + cv2
   renaming.py              rename_folder, collect_rename_targets
   classification.py        zero-shot CLIP (preprocess cv2, Classifier onnxruntime,
                            run_classify_batch, manifest, tri physique)
   runner.py                run_grade_batch (pool multiprocessing + callbacks)
   config.py                persistance JSON (%APPDATA%/StudioPhoto/)
 ui/                        PySide6 — style 100% via ui/style.py (QSS), zéro inline
-  app.py                   MainWindow (sidebar 4 vues, progress card, console)
-  grade_panel.py           onglet Étalonnage
-  compare_panel.py         onglet Aperçu (slider avant/après)
+  app.py                   MainWindow (onglets en haut, bas 50/50, console)
+  grade_panel.py           onglet Étalonnage (aperçu + éditeur + footer Dossiers/Options)
+  editor_panel.py          panneau éditeur (presets, curseurs, mes presets, pipette, LUT)
+  compare_panel.py         BeforeAfterView + workers Preview/Profile/Export
   classify_panel.py        onglet Classification
   rename_panel.py          onglet Renommage
   workers.py               GradeWorker / RenameWorker / ClassifyWorker (QThread)
   style.py                 thème dark pro (palette ambre)
 tools/
-  export_clip_assets.py    génération hors-ligne des assets (torch, DEV only)
+  export_clip_assets.py    génération hors-ligne des assets CLIP (torch, DEV only)
 cli.py                     CLI grade / rename / classify / benchmark
 build.py / build.bat       packaging PyInstaller (onedir/onefile)
 make_ico.py                app_icon.png -> app_icon.ico carré multi-résolution
 version.py                 source unique de la version
 ui_entry.py                point d'entrée (freeze_support + QApplication + icône)
+assets/luts/               LUT .cube (Identity.cube fourni)
 assets/                    modèle CLIP (local, gitignored) + README
-tests/                     pytest
+tests/                     pytest (68)
 ```
 
 ---

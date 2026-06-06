@@ -375,30 +375,64 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 
 ---
 
-## 16. Versions
+## 16. Évolutions v2 / v3
+
+### v2.0 — Refonte UI + corrections rendu
+- Disposition **2 colonnes** (réglages | aperçu), puis aperçu intégré à
+  l'étalonnage (curseur avant/après, navigation par image).
+- Couleurs **moins fades** (désaturation 7→3 %), **peau plus naturelle**
+  (correction peau adoucie).
+- Fixes packaging : `cv2.imdecode` (chemins Unicode), flux `stdout/stderr`
+  non-None en `--windowed` (multiprocessing), `--onedir` par défaut quand le
+  modèle est embarqué, nettoyage `dist/` avant build (verrous).
+
+### v3.0 — Éditeur interactif
+- `core/adjustments.py` : `EditParams` (presets **empilables** + 12 curseurs),
+  `render_with_profile`. Base Naturel (= v3) ou Noir & Blanc + looks créatifs.
+  **Invariant** : Naturel + curseurs à 0 == v3 strict.
+- Looks : Cinématique, Clair & Aéré, Peau douce, Vintage, Golden Hour, Froid.
+- **Mes presets** (sauver/charger), **pipette balance des blancs**, réglage
+  **global ou par image**, « Réinitialiser » = **photo originale**.
+- UI : **onglets en haut** (sidebar supprimée), compteurs retirés, bas **50/50**
+  (Dossiers+Options+LANCER | console), aperçu 60 % / éditeur 40 %, boutons compacts.
+
+### v3.2 — Moteur LUT 3D
+- `core/lut_engine.py` : LUT `.cube` (interp. trilinéaire vectorisée), vibrance,
+  **cache module-level** (dossier+nom) → `.cube` lu une fois par worker.
+- Intégrée au pipeline (étape 8, après neutralisation des blancs) **et** à
+  l'éditeur (`render_with_profile`). Workers picklables (seules les chaînes
+  `lut_dir`/`lut_name` passent ; `LutEngine` reconstruit dans le worker).
+- **Bugs corrigés à la revue** : inversion R↔B (`.cube` rouge le plus rapide →
+  `transpose(2,1,0,3)`) ; cache raté par image (lru_cache sur méthode →
+  fonction module) ; LUT ignorée avec l'éditeur ; test de régression réécrit.
+
+## 17. Versions
 
 | Version | Apport |
 |---------|--------|
 | 1.0.x | App de base (étalonnage + renommage), CI multi-OS, icône, versioning |
 | 1.1.0 | Anti-surexposition + série cohérente + blancs neutres (défaut) |
 | 1.2.0 | Aperçu avant/après + Classification zero-shot CLIP |
+| 2.0.0 | Aperçu intégré, peau naturelle, fixes packaging |
+| 3.0.0 | Éditeur interactif (presets empilables, curseurs, pipette, UI onglets) |
+| 3.2.0 | Moteur LUT 3D `.cube` + vibrance (revue & correctifs) |
 
 ---
 
-## 17. État actuel
+## 18. État actuel (v3.2.0)
 
-- ✅ 4 outils : Étalonnage · Aperçu · Classification · Renommage
-- ✅ `core/` pur testable seul ; **40 tests** au vert (dont régression pixel)
+- ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
+- ✅ `core/` pur testable seul ; **68 tests** au vert (régression pixel, LUT, éditeur)
+- ✅ Éditeur : presets empilables, 12 curseurs, mes presets, pipette BdB, LUT 3D
 - ✅ Workers adaptatifs (60 % cœurs physiques), série cohérente par défaut
 - ✅ CLI `grade` / `rename` / `classify` / `benchmark`
-- ✅ UI dark pro, style 100 % QSS, progress card réutilisée partout
-- ✅ Versioning centralisé, icône carrée, build onedir/onefile
+- ✅ UI dark pro, onglets en haut, style 100 % QSS
 - ✅ Classification CLIP (onnxruntime, sans torch), modèle local exclu du git
-- ✅ Build Windows + macOS Silicon fonctionnels en CI ; tag `v1.2.0` publié
-- ⚠ Build macOS Intel dépend des runners `macos-13` (continue-on-error)
-- ⚠ Exes CI sans modèle (gitignored) → classification inactive ; seul le build
-  local avec `assets/` peuplé embarque le tri auto
+- ✅ LUT `.cube` (R/B corrigé, cache par worker), `assets/luts/Identity.cube`
+- ✅ Build Windows + macOS Silicon en CI ; build local 3.2.0 OK (modèle + LUT)
+- ⚠ macOS Intel = build local (retiré de la CI)
+- ⚠ Exes CI sans modèle (gitignored) → classification inactive sans `assets/`
 
 ---
 
-*Document de référence — mis à jour jusqu'à la v1.2.0.*
+*Document de référence — mis à jour jusqu'à la v3.2.0.*
