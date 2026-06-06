@@ -3,6 +3,9 @@ numpy>=1.26
 PySide6>=6.6
 psutil>=5.9
 opencv-python-headless>=4.9
-onnxruntime>=1.17
+# onnxruntime : requis pour la classification. Pas de wheel pour Python 3.14+
+# (limité à 3.13). Le marqueur évite l'échec de l'install sur 3.14 ; sur cette
+# version l'app build sans le tri auto. Pour la classification : Python ≤ 3.12.
+onnxruntime>=1.17; python_version < "3.14"
 pyinstaller>=6.0
 pytest>=8.0
