@@ -34,15 +34,20 @@ QWidget {{
     background-color: transparent;
 }}
 
-/* ── Sidebar ────────────────────────────────────────────── */
-QWidget#sidebar {{
+/* ── Barre supérieure ───────────────────────────────────── */
+QWidget#topbar {{
     background-color: {BG1};
-    border-right: 1px solid {BORDER};
+    border-bottom: 1px solid {BORDER};
+}}
+
+QWidget#bottom_bar {{
+    background-color: {BG1};
+    border-top: 1px solid {BORDER};
 }}
 
 QLabel#app_logo {{
     color: {TEXT1};
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     letter-spacing: 3px;
     background: transparent;
@@ -51,42 +56,30 @@ QLabel#app_logo {{
 QLabel#app_version {{
     color: {TEXT3};
     font-size: 10px;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     background: transparent;
 }}
 
-/* ── Nav buttons ────────────────────────────────────────── */
-QPushButton#nav_grade,
-QPushButton#nav_compare,
-QPushButton#nav_classify,
-QPushButton#nav_rename {{
+/* ── Onglets horizontaux ────────────────────────────────── */
+QPushButton#nav_top {{
     background: transparent;
     color: {TEXT2};
     border: none;
-    border-left: 2px solid transparent;
-    padding: 13px 20px;
-    text-align: left;
+    border-bottom: 2px solid transparent;
+    padding: 0 16px;
+    min-height: 52px;
     font-size: 11px;
-    letter-spacing: 2px;
+    letter-spacing: 1.5px;
     font-weight: 600;
 }}
 
-QPushButton#nav_grade:checked,
-QPushButton#nav_compare:checked,
-QPushButton#nav_classify:checked,
-QPushButton#nav_rename:checked {{
+QPushButton#nav_top:checked {{
     color: {ACCENT};
-    border-left: 2px solid {ACCENT};
-    background-color: rgba(200,169,110,0.07);
+    border-bottom: 2px solid {ACCENT};
 }}
 
-QPushButton#nav_grade:hover:!checked,
-QPushButton#nav_compare:hover:!checked,
-QPushButton#nav_classify:hover:!checked,
-QPushButton#nav_rename:hover:!checked {{
+QPushButton#nav_top:hover:!checked {{
     color: {TEXT1};
-    background-color: {BG2};
-    border-left: 2px solid {BORDER};
 }}
 
 /* ── Stats sidebar ──────────────────────────────────────── */
@@ -282,12 +275,11 @@ QPushButton#btn_run {{
     color: #0D0D0D;
     border: none;
     border-radius: 5px;
-    padding: 10px 32px;
+    padding: 8px 22px;
     font-size: 12px;
     font-weight: 700;
-    letter-spacing: 1.5px;
-    min-width: 120px;
-    min-height: 38px;
+    letter-spacing: 1px;
+    min-width: 100px;
 }}
 
 QPushButton#btn_run:hover {{
@@ -386,13 +378,9 @@ QComboBox QAbstractItemView {{
     outline: none;
 }}
 
-/* ── Action bar ──────────────────────────────────────────── */
+/* ── Action bar (dans le bas gauche) ─────────────────────── */
 QWidget#action_bar {{
-    background-color: #0F0F0F;
-    border-top: 1px solid {BORDER};
-    border-bottom: 1px solid {BORDER};
-    min-height: 62px;
-    max-height: 62px;
+    background: transparent;
 }}
 
 /* ── Progress card ───────────────────────────────────────── */
@@ -416,11 +404,11 @@ QProgressBar#progress_bar::chunk {{
     border-radius: 1px;
 }}
 
-/* ── Console ─────────────────────────────────────────────── */
+/* ── Console (moitié droite du bas) ──────────────────────── */
 QTextEdit#console {{
-    background-color: {BG1};
+    background-color: {BG0};
     border: none;
-    border-top: 1px solid {BORDER};
+    border-left: 1px solid {BORDER};
     font-family: "Consolas", "Courier New", monospace;
     font-size: 11px;
     padding: 10px 14px;

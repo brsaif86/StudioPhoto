@@ -37,11 +37,11 @@ class GradePanel(QWidget):
         self._build()
 
     def _build(self) -> None:
-        # 3 colonnes : réglages (gauche) | aperçu (centre) | éditeur (droite)
+        # 2 colonnes : aperçu (centre, extensible) | éditeur (droite)
+        # Les réglages (Dossiers/Options) vivent dans le footer (bas de fenêtre).
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 4, 0, 0)
-        root.setSpacing(16)
-        root.addWidget(self._build_controls_column())
+        root.setSpacing(14)
         root.addWidget(self._build_preview_column(), stretch=1)
 
         self.editor = EditorPanel()
@@ -53,93 +53,75 @@ class GradePanel(QWidget):
         self.view.picked.connect(self.editor.set_white_balance)
         root.addWidget(self.editor)
 
-    # ── Colonne gauche : réglages compacts ──────────────────────────────────
+        self._footer = self._build_footer()      # placé par l'app en bas
 
-    def _build_controls_column(self) -> QWidget:
-        col = QWidget()
-        col.setObjectName("controls_col")
-        col.setMinimumWidth(300)
-        col.setMaximumWidth(360)
-        col.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-        v = QVBoxLayout(col)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(14)
+    def footer(self) -> QWidget:
+        return self._footer
+
+    # ── Footer compact : Dossiers + Options (côte à côte) ────────────────────
+
+    def _build_footer(self) -> QWidget:
+        w = QWidget()
+        h = QHBoxLayout(w)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(12)
 
         # ── Dossiers ───────────────────────────────────────────────────────
         folder_box = QGroupBox("DOSSIERS")
-        fv = QVBoxLayout(folder_box)
-        fv.setContentsMargins(14, 18, 14, 14)
-        fv.setSpacing(6)
+        fg = QGridLayout(folder_box)
+        fg.setContentsMargins(12, 16, 12, 10)
+        fg.setHorizontalSpacing(6)
+        fg.setVerticalSpacing(6)
+        fg.setColumnStretch(1, 1)
 
         self.src_edit = self._path_input("Dossier source…")
         self.out_edit = self._path_input("Vide = _output dans la source")
         self.src_edit.editingFinished.connect(self.refresh_preview)
-
-        for caption, edit in [("Source", self.src_edit), ("Sortie", self.out_edit)]:
-            cap = QLabel(caption)
-            cap.setObjectName("form_label")
-            row = QHBoxLayout()
-            row.setSpacing(6)
-            browse = QPushButton("…")
-            browse.setObjectName("btn_browse")
-            browse.setFixedWidth(34)
-            browse.setCursor(Qt.PointingHandCursor)
+        for r, (cap, edit) in enumerate([("Source", self.src_edit), ("Sortie", self.out_edit)]):
+            lbl = QLabel(cap); lbl.setObjectName("form_label")
+            browse = QPushButton("…"); browse.setObjectName("btn_browse")
+            browse.setFixedWidth(30); browse.setCursor(Qt.PointingHandCursor)
             browse.clicked.connect(lambda _, e=edit: self._browse(e))
-            row.addWidget(edit, stretch=1)
-            row.addWidget(browse)
-            fv.addWidget(cap)
-            fv.addLayout(row)
-
-        v.addWidget(folder_box)
+            fg.addWidget(lbl, r, 0); fg.addWidget(edit, r, 1); fg.addWidget(browse, r, 2)
+        h.addWidget(folder_box, stretch=1)
 
         # ── Options ────────────────────────────────────────────────────────
         opt_box = QGroupBox("OPTIONS")
-        ov = QVBoxLayout(opt_box)
-        ov.setContentsMargins(14, 18, 14, 14)
-        ov.setSpacing(8)
+        og = QGridLayout(opt_box)
+        og.setContentsMargins(12, 16, 12, 10)
+        og.setHorizontalSpacing(10)
+        og.setVerticalSpacing(6)
 
         _dw = default_workers()
         self.suffix_edit  = QLineEdit(DEFAULT_SUFFIX)
-        self.workers_spin = QSpinBox()
-        self.workers_spin.setRange(1, 64)
-        self.workers_spin.setValue(_dw)
-        self.workers_spin.setToolTip(f"60 % des cœurs physiques détectés ({_dw} par défaut)")
-        self.quality_spin = QSpinBox()
-        self.quality_spin.setRange(60, 100)
-        self.quality_spin.setValue(DEFAULT_QUALITY)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(8)
-        grid.setColumnStretch(1, 1)
-        for row, (text, widget) in enumerate([
-            ("Suffixe", self.suffix_edit),
-            ("Processus", self.workers_spin),
-            ("Qualité", self.quality_spin),
+        self.suffix_edit.setMaximumWidth(110)
+        self.workers_spin = QSpinBox(); self.workers_spin.setRange(1, 64); self.workers_spin.setValue(_dw)
+        self.workers_spin.setMaximumWidth(70)
+        self.quality_spin = QSpinBox(); self.quality_spin.setRange(60, 100); self.quality_spin.setValue(DEFAULT_QUALITY)
+        self.quality_spin.setMaximumWidth(70)
+        # ligne 1 : Suffixe | Processus | Qualité
+        for col, (text, widget) in enumerate([
+            ("Suffixe", self.suffix_edit), ("Processus", self.workers_spin), ("Qualité", self.quality_spin),
         ]):
-            lbl = QLabel(text)
-            lbl.setObjectName("form_label")
-            grid.addWidget(lbl,    row, 0)
-            grid.addWidget(widget, row, 1)
-        ov.addLayout(grid)
+            lbl = QLabel(text); lbl.setObjectName("form_label")
+            og.addWidget(lbl, 0, col * 2)
+            og.addWidget(widget, 0, col * 2 + 1)
 
-        self.recursive_cb = QCheckBox("Récursif (sous-dossiers)")
-        self.skip_cb      = QCheckBox("Ignorer images déjà traitées")
+        self.recursive_cb = QCheckBox("Récursif")
+        self.skip_cb      = QCheckBox("Ignorer déjà traitées")
         self.coherent_cb  = QCheckBox("Uniformiser la série")
-        self.coherent_cb.setToolTip(
-            "Réglage commun par dossier pour un rendu homogène sur toute la série."
-        )
         for cb in (self.recursive_cb, self.skip_cb, self.coherent_cb):
             cb.setChecked(True)
-            ov.addWidget(cb)
+        og.addWidget(self.recursive_cb, 1, 0, 1, 2)
+        og.addWidget(self.skip_cb,      1, 2, 1, 2)
+        og.addWidget(self.coherent_cb,  1, 4, 1, 2)
 
         self.recursive_cb.toggled.connect(self.refresh_preview)
         self.suffix_edit.editingFinished.connect(self.refresh_preview)
         self.coherent_cb.toggled.connect(self._on_coherent_toggled)
 
-        v.addWidget(opt_box)
-        v.addStretch()
-        return col
+        h.addWidget(opt_box, stretch=1)
+        return w
 
     # ── Colonne droite : aperçu ─────────────────────────────────────────────
 

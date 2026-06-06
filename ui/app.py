@@ -44,105 +44,68 @@ class MainWindow(QMainWindow):
         root = QWidget()
         root.setObjectName("root")
         self.setCentralWidget(root)
-        h = QHBoxLayout(root)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(0)
-        h.addWidget(self._build_sidebar())
-        h.addWidget(self._build_main_column(), stretch=1)
-
-    # ── Sidebar ────────────────────────────────────────────────────────────────
-
-    def _build_sidebar(self) -> QWidget:
-        sb = QWidget()
-        sb.setObjectName("sidebar")
-        sb.setFixedWidth(190)
-        v = QVBoxLayout(sb)
+        v = QVBoxLayout(root)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
+        v.addWidget(self._build_topbar())
+        v.addWidget(self._build_content(), stretch=1)
 
-        # Logo block
-        logo_w = QWidget()
-        lv = QVBoxLayout(logo_w)
-        lv.setContentsMargins(20, 28, 20, 20)
-        lv.setSpacing(4)
+    # ── Barre supérieure : titre + onglets horizontaux ──────────────────────────
+
+    def _build_topbar(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("topbar")
+        bar.setFixedHeight(54)
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(22, 0, 22, 0)
+        h.setSpacing(4)
+
         logo = QLabel("STUDIO")
         logo.setObjectName("app_logo")
-        ver  = QLabel(f"v{__version__}")
+        ver = QLabel(f"v{__version__}")
         ver.setObjectName("app_version")
-        lv.addWidget(logo)
-        lv.addWidget(ver)
-        v.addWidget(logo_w)
-        v.addWidget(self._hline())
+        h.addWidget(logo)
+        h.addWidget(ver)
+        h.addSpacing(30)
 
-        # Nav
         self.nav_grade    = QPushButton("ÉTALONNAGE")
         self.nav_classify = QPushButton("CLASSIFICATION")
         self.nav_rename   = QPushButton("RENOMMAGE")
         for btn, name in [
-            (self.nav_grade,    "nav_grade"),
-            (self.nav_classify, "nav_classify"),
-            (self.nav_rename,   "nav_rename"),
+            (self.nav_grade,    "nav_top"),
+            (self.nav_classify, "nav_top"),
+            (self.nav_rename,   "nav_top"),
         ]:
             btn.setObjectName(name)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFlat(True)
-            v.addWidget(btn)
+            h.addWidget(btn)
 
         self.nav_grade.setChecked(True)
         self.nav_grade.clicked.connect(lambda: self._switch(0))
         self.nav_classify.clicked.connect(lambda: self._switch(2))
         self.nav_rename.clicked.connect(lambda: self._switch(1))
-
-        v.addStretch()
-        v.addWidget(self._hline())
-        v.addWidget(self._build_stats_block())
-        return sb
-
-    def _build_stats_block(self) -> QWidget:
-        w = QWidget()
-        v = QVBoxLayout(w)
-        v.setContentsMargins(20, 18, 20, 24)
-        v.setSpacing(14)
-        self.stat_processed = self._stat_row(v, "TRAITÉES")
-        self.stat_skipped   = self._stat_row(v, "IGNORÉES")
-        self.stat_errors    = self._stat_row(v, "ERREURS")
-        return w
-
-    def _stat_row(self, parent_layout, label_text: str) -> QLabel:
-        row = QWidget()
-        h = QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
-        val = QLabel("0")
-        val.setObjectName("stat_value")
-        val.setFont(QFont("Segoe UI", 19, QFont.Light))
-        lbl = QLabel(label_text)
-        lbl.setObjectName("stat_label")
-        lbl.setFont(QFont("Segoe UI", 9))
-        h.addWidget(val)
         h.addStretch()
-        h.addWidget(lbl, alignment=Qt.AlignBottom)
-        parent_layout.addWidget(row)
-        return val
+        return bar
 
-    # ── Main column ────────────────────────────────────────────────────────────
+    # ── Contenu : vues (haut) + bas 50/50 (réglages | console) ──────────────────
 
-    def _build_main_column(self) -> QWidget:
+    def _build_content(self) -> QWidget:
         col = QWidget()
         col.setObjectName("content_area")
         v = QVBoxLayout(col)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # Scrollable content area
+        # Vue active (panneaux) — occupe le haut
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
         scroll_content = QWidget()
         sc = QVBoxLayout(scroll_content)
-        sc.setContentsMargins(32, 28, 32, 24)
+        sc.setContentsMargins(20, 16, 20, 8)
         sc.setSpacing(0)
 
         self.stack = QStackedWidget()
@@ -153,48 +116,64 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.rename_panel)    # index 1
         self.stack.addWidget(self.classify_panel)  # index 2
         sc.addWidget(self.stack, stretch=1)
-
         scroll.setWidget(scroll_content)
-        v.addWidget(scroll, stretch=4)
+        v.addWidget(scroll, stretch=1)
 
-        # Action bar — widget dédié avec objectName pour le QSS
-        self.action_bar = self._build_action_bar()
-        v.addWidget(self.action_bar)
-
-        # Progress card (masqué par défaut)
+        # Progress card (pleine largeur, masquée par défaut)
         self.progress_card = self._build_progress_card()
         self.progress_card.setVisible(False)
         v.addWidget(self.progress_card)
 
-        # Console
+        # ── Bas 50/50 : [réglages + LANCER/ANNULER] | console ──────────────
+        bottom = QWidget()
+        bottom.setObjectName("bottom_bar")
+        bottom.setFixedHeight(232)
+        bh = QHBoxLayout(bottom)
+        bh.setContentsMargins(0, 0, 0, 0)
+        bh.setSpacing(0)
+
+        left = QWidget()
+        lv = QVBoxLayout(left)
+        lv.setContentsMargins(20, 12, 12, 14)
+        lv.setSpacing(10)
+        self.footer_stack = QStackedWidget()
+        self.footer_stack.addWidget(self.grade_panel.footer())   # 0 étalonnage
+        self.footer_stack.addWidget(QWidget())                   # 1 renommage
+        self.footer_stack.addWidget(QWidget())                   # 2 classification
+        lv.addWidget(self.footer_stack, stretch=1)
+        self.action_bar = self._build_action_bar()
+        lv.addWidget(self.action_bar)
+        bh.addWidget(left, stretch=1)
+
         self.console = QTextEdit()
         self.console.setObjectName("console")
         self.console.setReadOnly(True)
-        self.console.setMinimumHeight(90)
-        self.console.setMaximumHeight(200)
-        self.console.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        v.addWidget(self.console, stretch=1)
+        self.console.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        bh.addWidget(self.console, stretch=1)
 
+        v.addWidget(bottom)
         return col
 
     def _build_action_bar(self) -> QWidget:
         bar = QWidget()
         bar.setObjectName("action_bar")
         bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        bar.setFixedHeight(62)
+        bar.setFixedHeight(44)
 
         h = QHBoxLayout(bar)
-        h.setContentsMargins(32, 12, 32, 12)
-        h.setSpacing(10)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
 
-        self.btn_run = QPushButton("▶   LANCER")
+        self.btn_run = QPushButton("▶  LANCER")
         self.btn_run.setObjectName("btn_run")
         self.btn_run.setCursor(Qt.PointingHandCursor)
+        self.btn_run.setFixedHeight(38)
 
         self.btn_cancel = QPushButton("ANNULER")
         self.btn_cancel.setObjectName("btn_cancel")
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.setCursor(Qt.PointingHandCursor)
+        self.btn_cancel.setFixedHeight(38)
 
         self.btn_run.clicked.connect(self._on_run)
         self.btn_cancel.clicked.connect(self._on_cancel)
@@ -258,6 +237,7 @@ class MainWindow(QMainWindow):
 
     def _switch(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)
+        self.footer_stack.setCurrentIndex(idx)
         self.nav_grade.setChecked(idx == 0)
         self.nav_rename.setChecked(idx == 1)
         self.nav_classify.setChecked(idx == 2)
@@ -358,7 +338,6 @@ class MainWindow(QMainWindow):
 
     def _start_worker(self, worker) -> None:
         self._worker = worker
-        self._reset_stats()
         self.btn_run.setEnabled(False)
         self.btn_cancel.setEnabled(True)
         self.lbl_speed.setText("")
@@ -407,10 +386,6 @@ class MainWindow(QMainWindow):
     # ── Finish callbacks ──────────────────────────────────────────────────────
 
     def _on_grade_done(self, result: dict) -> None:
-        self.stat_processed.setText(str(result["ok"]))
-        self.stat_skipped.setText(str(result["skipped"]))
-        self.stat_errors.setText(str(result["errors"]))
-
         self._log_sep()
         status = "Annulé" if result.get("cancelled") else "Terminé"
         parts  = [f"{result['ok']} traitée(s)"]
@@ -427,9 +402,6 @@ class MainWindow(QMainWindow):
             self._log_sep()
             self._finish()
             return
-        self.stat_processed.setText(str(result.get("ok", 0)))
-        self.stat_skipped.setText(str(result.get("review", 0)))
-        self.stat_errors.setText(str(result.get("errors", 0)))
         self._log_sep()
         status = "Annulé" if result.get("cancelled") else "Terminé"
         self._log(
@@ -476,11 +448,6 @@ class MainWindow(QMainWindow):
 
     def _log_sep(self) -> None:
         self._log("─" * 72, "#252525")
-
-    def _reset_stats(self) -> None:
-        self.stat_processed.setText("0")
-        self.stat_skipped.setText("0")
-        self.stat_errors.setText("0")
 
     # ── Persist ───────────────────────────────────────────────────────────────
 
