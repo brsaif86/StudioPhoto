@@ -343,6 +343,49 @@ QPushButton#btn_browse:hover {{
     background-color: rgba(200,169,110,0.05);
 }}
 
+QPushButton#btn_browse:checked {{
+    background-color: rgba(200,169,110,0.16);
+    color: {ACCENT};
+    border: 1px solid {ACCENT};
+}}
+
+QPushButton#btn_browse:disabled {{
+    color: {TEXT3};
+    border-color: #1E1E1E;
+}}
+
+/* ── ComboBox (mes presets) ──────────────────────────────── */
+QComboBox {{
+    background-color: {BG3};
+    color: {TEXT1};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 11px;
+}}
+
+QComboBox:hover {{ border-color: #3A3A3A; }}
+
+QComboBox::drop-down {{
+    border: none;
+    width: 18px;
+}}
+
+QComboBox::down-arrow {{
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {TEXT2};
+}}
+
+QComboBox QAbstractItemView {{
+    background-color: {BG2};
+    color: {TEXT1};
+    border: 1px solid {BORDER};
+    selection-background-color: rgba(200,169,110,0.20);
+    outline: none;
+}}
+
 /* ── Action bar ──────────────────────────────────────────── */
 QWidget#action_bar {{
     background-color: #0F0F0F;

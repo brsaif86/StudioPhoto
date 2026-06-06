@@ -45,10 +45,12 @@ class GradePanel(QWidget):
         root.addWidget(self._build_preview_column(), stretch=1)
 
         self.editor = EditorPanel()
-        self.editor.setMinimumWidth(270)
-        self.editor.setMaximumWidth(310)
+        self.editor.setMinimumWidth(280)
+        self.editor.setMaximumWidth(320)
         self.editor.changed.connect(self._load_current_preview)
         self.editor.export_requested.connect(self._export_current)
+        self.editor.pipette_toggled.connect(self.view.set_pick_mode)
+        self.view.picked.connect(self.editor.set_white_balance)
         root.addWidget(self.editor)
 
     # ── Colonne gauche : réglages compacts ──────────────────────────────────

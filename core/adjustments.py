@@ -27,11 +27,14 @@ from core.grading import (
 
 DEFAULT_PRESET = "Naturel"
 BASE_PRESETS = ["Naturel", "Noir & Blanc"]                 # correction de base
-LOOK_PRESETS = ["Cinématique", "Vintage", "Golden Hour", "Froid"]   # looks empilables
-PRESETS = ["Naturel", "Cinématique", "Noir & Blanc", "Vintage", "Golden Hour", "Froid"]
+LOOK_PRESETS = ["Cinématique", "Clair & Aéré", "Peau douce",
+                "Vintage", "Golden Hour", "Froid"]          # looks empilables
+PRESETS = ["Naturel", "Noir & Blanc", "Cinématique", "Clair & Aéré",
+           "Peau douce", "Vintage", "Golden Hour", "Froid"]
 
 _SLIDER_NAMES = ("exposure", "contrast", "highlights", "shadows",
-                 "saturation", "temperature", "sharpness", "grain")
+                 "temperature", "tint", "vibrance", "saturation",
+                 "clarity", "sharpness", "vignette", "grain")
 
 
 # ── Paramètres d'édition ──────────────────────────────────────────────────────
@@ -48,9 +51,13 @@ class EditParams:
     contrast:    float = 0.0
     highlights:  float = 0.0
     shadows:     float = 0.0
-    saturation:  float = 0.0
     temperature: float = 0.0
+    tint:        float = 0.0
+    vibrance:    float = 0.0
+    saturation:  float = 0.0
+    clarity:     float = 0.0
     sharpness:   float = 0.0
+    vignette:    float = 0.0
     grain:       float = 0.0
 
     def is_neutral(self) -> bool:
@@ -147,6 +154,46 @@ def _temperature(arr, v):        # + = plus chaud, - = plus froid
     return arr
 
 
+def _tint(arr, v):               # + = magenta, - = vert
+    if v:
+        t = v / 100.0
+        arr[:, :, 1] *= 1.0 - 0.12 * t
+        arr[:, :, 0] *= 1.0 + 0.04 * t
+        arr[:, :, 2] *= 1.0 + 0.04 * t
+    return arr
+
+
+def _vibrance(arr, v):           # saturation qui protège les zones déjà saturées (peau)
+    if v:
+        lum = _luma(arr)[:, :, None]
+        mx = arr.max(axis=2, keepdims=True)
+        mn = arr.min(axis=2, keepdims=True)
+        sat = (mx - mn) / (mx + 1e-6)
+        factor = 1.0 + (v / 100.0) * (1.0 - sat)
+        arr[:] = lum + (arr - lum) * factor
+    return arr
+
+
+def _clarity(arr, v):            # contraste local des mi-tons (+net / -doux peau)
+    if v:
+        blurred = _gaussian(arr, radius=12)
+        lum = _luma(arr)[:, :, None]
+        mid = np.clip(1.0 - np.abs(lum - 0.5) * 2.0, 0, 1)   # poids mi-tons
+        arr += (v / 100.0) * 0.7 * (arr - blurred) * mid
+    return arr
+
+
+def _vignette(arr, v):           # + assombrit les coins, - les éclaircit
+    if v:
+        h, w = arr.shape[:2]
+        yy, xx = np.ogrid[:h, :w]
+        cy, cx = (h - 1) / 2.0, (w - 1) / 2.0
+        d = np.sqrt(((xx - cx) / (cx + 1e-6)) ** 2 + ((yy - cy) / (cy + 1e-6)) ** 2)
+        mask = (np.clip(d / 1.41, 0, 1) ** 2)[:, :, None].astype(np.float32)
+        arr *= (1.0 - (v / 100.0) * 0.6 * mask)
+    return arr
+
+
 def _sharpness(arr, v):          # masque de netteté (unsharp)
     if v > 0:
         blurred = _gaussian(arr, radius=1.4)
@@ -163,14 +210,18 @@ def _grain(arr, v, seed=None):   # grain argentique (bruit de luminance)
 
 
 def apply_manual(arr: np.ndarray, p: EditParams, grain_seed=None) -> np.ndarray:
-    """Applique les 8 corrections manuelles dans l'ordre, en place."""
+    """Applique les corrections manuelles dans l'ordre, en place."""
     _exposure(arr, p.exposure)
     _contrast(arr, p.contrast)
     _highlights(arr, p.highlights)
     _shadows(arr, p.shadows)
     _temperature(arr, p.temperature)
+    _tint(arr, p.tint)
+    _vibrance(arr, p.vibrance)
     _saturation(arr, p.saturation)
+    _clarity(arr, p.clarity)
     _sharpness(arr, p.sharpness)
+    _vignette(arr, p.vignette)
     np.clip(arr, 0, 1, out=arr)
     _grain(arr, p.grain, seed=grain_seed)
     np.clip(arr, 0, 1, out=arr)
@@ -257,10 +308,36 @@ def look_froid(arr01: np.ndarray) -> np.ndarray:
     return out
 
 
+def look_clair_aere(arr01: np.ndarray) -> np.ndarray:
+    """Light & airy : lumineux, doux, noirs levés, légèrement chaud."""
+    out = arr01.copy()
+    out *= 0.88; out += 0.09                          # lève les noirs (matte)
+    out -= 0.5; out *= 0.92; out += 0.5               # contraste réduit
+    out[:, :, 0] *= 1.02                              # chaleur légère
+    out[:, :, 2] *= 0.99
+    lum = _luma(out)[:, :, None]
+    out[:] = lum + (out - lum) * 0.95                 # désat très légère
+    np.clip(out, 0, 1, out=out)
+    return out
+
+
+def look_peau_douce(arr01: np.ndarray) -> np.ndarray:
+    """Portrait doux : léger lissage global + chaleur de peau."""
+    out = arr01.copy()
+    blurred = _gaussian(out, radius=8)
+    out = out * 0.72 + blurred * 0.28                 # adoucit (clarté négative)
+    out[:, :, 0] *= 1.03                              # peau plus chaude
+    out[:, :, 2] *= 0.98
+    np.clip(out, 0, 1, out=out)
+    return out
+
+
 _LOOKS = {
     "Naturel":      look_naturel,
     "Cinématique":  look_cinematique,
     "Noir & Blanc": look_bw,
+    "Clair & Aéré": look_clair_aere,
+    "Peau douce":   look_peau_douce,
     "Vintage":      look_vintage,
     "Golden Hour":  look_golden,
     "Froid":        look_froid,

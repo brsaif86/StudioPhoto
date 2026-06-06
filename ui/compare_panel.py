@@ -86,16 +86,23 @@ class ExportWorker(QThread):
 class BeforeAfterView(QWidget):
     """Affiche original (gauche) et étalonné (droite) séparés par un curseur."""
 
+    picked = Signal(float, float, float)   # couleur originale cliquée (pipette)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._orig: QPixmap | None = None
         self._graded: QPixmap | None = None
         self._split = 0.5          # position du curseur 0..1
         self._dragging = False
+        self._pick_mode = False
         self.setMinimumHeight(360)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMouseTracking(True)
         self.setCursor(Qt.SplitHCursor)
+
+    def set_pick_mode(self, on: bool) -> None:
+        self._pick_mode = on
+        self.setCursor(Qt.CrossCursor if on else Qt.SplitHCursor)
 
     def set_images(self, orig: QPixmap, graded: QPixmap) -> None:
         self._orig = orig
@@ -183,9 +190,26 @@ class BeforeAfterView(QWidget):
         self.update()
 
     def mousePressEvent(self, e):
-        if self._orig:
-            self._dragging = True
-            self._update_split(e.position().x())
+        if not self._orig:
+            return
+        if self._pick_mode:
+            self._pick_color(e.position().x(), e.position().y())
+            return
+        self._dragging = True
+        self._update_split(e.position().x())
+
+    def _pick_color(self, x: float, y: float) -> None:
+        """Échantillonne la couleur de l'ORIGINAL au point cliqué → signal picked."""
+        rect = self._target_rect()
+        if rect.width() <= 0 or not rect.contains(x, y):
+            return
+        ox = int((x - rect.x()) / rect.width() * self._orig.width())
+        oy = int((y - rect.y()) / rect.height() * self._orig.height())
+        ox = max(0, min(self._orig.width() - 1, ox))
+        oy = max(0, min(self._orig.height() - 1, oy))
+        img = self._orig.toImage()
+        c = img.pixelColor(ox, oy)
+        self.picked.emit(c.redF(), c.greenF(), c.blueF())
 
     def mouseMoveEvent(self, e):
         if self._dragging:
