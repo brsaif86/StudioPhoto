@@ -9,6 +9,27 @@ import multiprocessing as mp
 import sys
 from pathlib import Path
 
+
+# ── Garde-fou flux standard (PyInstaller --windowed) ──────────────────────────
+# Dans un exe --windowed (sans console), sys.stdout/sys.stderr valent None.
+# Les process enfants du Pool d'étalonnage plantent alors sur `None.write`
+# (→ BrokenPipeError). On installe un flux nul valide. Ce code s'exécute au
+# niveau module donc AUSSI dans les process enfants (qui réimportent le main).
+class _NullStream:
+    def write(self, *_args, **_kwargs):
+        return 0
+    def flush(self):
+        pass
+    def isatty(self):
+        return False
+
+
+if sys.stdout is None:
+    sys.stdout = _NullStream()
+if sys.stderr is None:
+    sys.stderr = _NullStream()
+
+
 if __name__ == "__main__":
     mp.freeze_support()
 

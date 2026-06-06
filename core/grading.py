@@ -254,8 +254,31 @@ def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None):
 
 # ── Worker picklable (multiprocessing sous Windows) ───────────────────────────
 
+def _ensure_std_streams() -> None:
+    """Garantit sys.stdout/sys.stderr non-None dans les process enfants.
+
+    Sous PyInstaller --windowed, les enfants du Pool héritent de flux None ;
+    toute écriture (multiprocessing, warnings) plante alors sur None.write.
+    """
+    import sys
+
+    class _Null:
+        def write(self, *_a, **_k):
+            return 0
+        def flush(self):
+            pass
+        def isatty(self):
+            return False
+
+    if sys.stdout is None:
+        sys.stdout = _Null()
+    if sys.stderr is None:
+        sys.stderr = _Null()
+
+
 def _grade_worker(args: tuple) -> str:
     """Wrapper picklable pour mp.Pool."""
+    _ensure_std_streams()
     input_path, output_path, skip_existing, quality, profile = args
     return process_image(
         Path(input_path), Path(output_path), skip_existing, quality, profile
