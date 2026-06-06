@@ -95,7 +95,7 @@ class BeforeAfterView(QWidget):
         self._split = 0.5          # position du curseur 0..1
         self._dragging = False
         self._pick_mode = False
-        self.setMinimumHeight(360)
+        self.setMinimumHeight(240)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMouseTracking(True)
         self.setCursor(Qt.SplitHCursor)

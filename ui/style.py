@@ -499,8 +499,8 @@ QPushButton#preset_btn {{
     color: {TEXT2};
     border: 1px solid {BORDER};
     border-radius: 4px;
-    padding: 8px 6px;
-    font-size: 11px;
+    padding: 5px 4px;
+    font-size: 10px;
 }}
 
 QPushButton#preset_btn:hover {{

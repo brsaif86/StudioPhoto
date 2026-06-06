@@ -77,10 +77,10 @@ class EditorPanel(QWidget):
 
         # ── Presets automatiques ──────────────────────────────────────────
         pbox = QFrame(); pbox.setObjectName("editor_box")
-        pv = QVBoxLayout(pbox); pv.setContentsMargins(14, 12, 14, 14); pv.setSpacing(8)
+        pv = QVBoxLayout(pbox); pv.setContentsMargins(12, 10, 12, 12); pv.setSpacing(6)
         t1 = QLabel("PRESETS AUTOMATIQUES"); t1.setObjectName("editor_title")
         pv.addWidget(t1)
-        grid = QGridLayout(); grid.setSpacing(8)
+        grid = QGridLayout(); grid.setSpacing(6)
         self._preset_btns = {}
         for i, name in enumerate(PRESETS):
             b = QPushButton(name)
@@ -122,7 +122,7 @@ class EditorPanel(QWidget):
 
         # ── Corrections manuelles ─────────────────────────────────────────
         cbox = QFrame(); cbox.setObjectName("editor_box")
-        cv = QVBoxLayout(cbox); cv.setContentsMargins(14, 12, 14, 14); cv.setSpacing(6)
+        cv = QVBoxLayout(cbox); cv.setContentsMargins(12, 10, 12, 12); cv.setSpacing(3)
         chead = QHBoxLayout()
         t3 = QLabel("CORRECTIONS MANUELLES"); t3.setObjectName("editor_title")
         self.btn_pipette = QPushButton("⛏ Pipette BdB")
