@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLineEdit, QPushButton, QCheckBox, QSpinBox, QLabel,
-    QFileDialog, QGroupBox, QSizePolicy, QSlider,
+    QFileDialog, QGroupBox, QSizePolicy,
 )
 from PySide6.QtCore import Qt, QTimer
 
@@ -22,10 +22,12 @@ class GradePanel(QWidget):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._images: list[Path] = []
-        self._preview_worker = None
+        self._nav_idx = 0                 # index image courante dans l'aperçu
         self._preview_token = 0
         self._profile = None              # profil de série (mode uniformiser)
-        self._profile_worker = None
+        # QThreads vivants : référence forte tant qu'ils tournent, sinon le GC
+        # détruit le QThread en cours d'exécution → crash de l'application.
+        self._workers: list = []
         # debounce du chargement quand on déplace le curseur de navigation
         self._nav_timer = QTimer(self)
         self._nav_timer.setSingleShot(True)
@@ -161,37 +163,35 @@ class GradePanel(QWidget):
         self.view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         pv.addWidget(self.view, stretch=1)
 
-        # navigation entre les images du dossier
+        # navigation entre les images du dossier (boutons Précédent / Suivant)
         nav = QHBoxLayout()
-        self.prev_arrow = QPushButton("‹")
-        self.next_arrow = QPushButton("›")
+        nav.setSpacing(12)
+        self.prev_arrow = QPushButton("‹  Précédent")
+        self.next_arrow = QPushButton("Suivant  ›")
         for b in (self.prev_arrow, self.next_arrow):
             b.setObjectName("btn_browse")
-            b.setFixedWidth(40)
+            b.setMinimumWidth(120)
             b.setCursor(Qt.PointingHandCursor)
         self.prev_arrow.clicked.connect(lambda: self._step(-1))
         self.next_arrow.clicked.connect(lambda: self._step(1))
 
-        self.nav_slider = QSlider(Qt.Horizontal)
-        self.nav_slider.setMinimum(0)
-        self.nav_slider.setMaximum(0)
-        self.nav_slider.valueChanged.connect(self._on_nav_changed)
-
         self.nav_index = QLabel("0 / 0")
-        self.nav_index.setObjectName("hint_label")
-        self.nav_index.setMinimumWidth(70)
+        self.nav_index.setObjectName("progress_file")
+        self.nav_index.setMinimumWidth(120)
         self.nav_index.setAlignment(Qt.AlignCenter)
 
+        nav.addStretch()
         nav.addWidget(self.prev_arrow)
-        nav.addWidget(self.nav_slider, stretch=1)
-        nav.addWidget(self.next_arrow)
         nav.addWidget(self.nav_index)
+        nav.addWidget(self.next_arrow)
+        nav.addStretch()
         pv.addLayout(nav)
 
         hint = QLabel("Curseur central : comparer avant/après · "
-                      "curseur du bas / flèches : changer d'image.")
+                      "Précédent / Suivant : changer d'image.")
         hint.setObjectName("hint_label")
         hint.setWordWrap(True)
+        hint.setAlignment(Qt.AlignCenter)
         pv.addWidget(hint)
 
         self._set_nav_enabled(False)
@@ -213,8 +213,13 @@ class GradePanel(QWidget):
                 self.refresh_preview()
 
     def _set_nav_enabled(self, on: bool) -> None:
-        for w in (self.nav_slider, self.prev_arrow, self.next_arrow):
-            w.setEnabled(on)
+        self.prev_arrow.setEnabled(on)
+        self.next_arrow.setEnabled(on)
+
+    def _update_arrows(self) -> None:
+        n = len(self._images)
+        self.prev_arrow.setEnabled(self._nav_idx > 0)
+        self.next_arrow.setEnabled(self._nav_idx < n - 1)
 
     # ── Aperçu : scan + navigation ──────────────────────────────────────────
 
@@ -234,23 +239,33 @@ class GradePanel(QWidget):
         suffix = self.suffix_edit.text().strip() or DEFAULT_SUFFIX
         self._images = list_source_images(folder, suffix, self.recursive_cb.isChecked())
         n = len(self._images)
-        self.nav_slider.blockSignals(True)
-        self.nav_slider.setMaximum(max(0, n - 1))
-        self.nav_slider.setValue(0)
-        self.nav_slider.blockSignals(False)
-        self._set_nav_enabled(n > 0)
+        self._nav_idx = 0
         if n == 0:
             self.view.clear()
             self.preview_name.setText("Aucune image dans ce dossier")
             self.preview_info.setText("")
             self.nav_index.setText("0 / 0")
+            self._set_nav_enabled(False)
         else:
             self.nav_index.setText(f"1 / {n}")
             self.preview_name.setText(self._images[0].name)
+            self._update_arrows()
             self._recompute_profile()      # (ré)calcule le profil si « uniformiser »
             self._load_current_preview()
 
     # ── Profil de série (mode uniformiser) ──────────────────────────────────
+
+    def _track(self, worker) -> None:
+        """Démarre un QThread en gardant une référence forte jusqu'à sa fin."""
+        self._workers.append(worker)
+        worker.finished.connect(lambda w=worker: self._untrack(w))
+        worker.start()
+
+    def _untrack(self, worker) -> None:
+        try:
+            self._workers.remove(worker)
+        except ValueError:
+            pass
 
     def _on_coherent_toggled(self, _checked: bool) -> None:
         self._recompute_profile()
@@ -264,30 +279,30 @@ class GradePanel(QWidget):
         self.preview_info.setText("Calcul du profil de série…")
         worker = ProfileWorker(list(self._images))
         worker.done.connect(self._on_profile_done)
-        self._profile_worker = worker
-        worker.start()
+        self._track(worker)
 
     def _on_profile_done(self, profile) -> None:
         self._profile = profile
         self._load_current_preview()       # recharge avec le profil appliqué
 
     def _step(self, delta: int) -> None:
-        self.nav_slider.setValue(
-            max(0, min(self.nav_slider.maximum(), self.nav_slider.value() + delta))
-        )
-
-    def _on_nav_changed(self, value: int) -> None:
         n = len(self._images)
-        if n:
-            self.nav_index.setText(f"{value + 1} / {n}")
-            self.preview_name.setText(self._images[value].name)
-            self.preview_info.setText("Étalonnage…")
-        self._nav_timer.start()          # débounce : charge après l'arrêt du curseur
+        if not n:
+            return
+        new = max(0, min(n - 1, self._nav_idx + delta))
+        if new == self._nav_idx:
+            return
+        self._nav_idx = new
+        self.nav_index.setText(f"{new + 1} / {n}")
+        self.preview_name.setText(self._images[new].name)
+        self.preview_info.setText("Étalonnage…")
+        self._update_arrows()
+        self._nav_timer.start()          # débounce : coalesce les clics rapides
 
     def _load_current_preview(self) -> None:
         if not self._images:
             return
-        idx = self.nav_slider.value()
+        idx = self._nav_idx
         if idx < 0 or idx >= len(self._images):
             return
         path = self._images[idx]
@@ -300,8 +315,7 @@ class GradePanel(QWidget):
             lambda o, g, m, met, t=token: self._on_preview_done(o, g, m, met, t)
         )
         worker.error.connect(lambda msg, t=token: self._on_preview_error(msg, t))
-        self._preview_worker = worker
-        worker.start()
+        self._track(worker)
 
     def _on_preview_done(self, orig_px, graded_px, mode, metrics, token) -> None:
         if token != self._preview_token:
