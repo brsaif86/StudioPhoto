@@ -347,7 +347,9 @@ _LOOKS = {
 # ── Rendu unifié ──────────────────────────────────────────────────────────────
 
 def render_with_profile(arr01: np.ndarray, params: EditParams,
-                        profile: dict = None, grain_seed=None) -> np.ndarray:
+                        profile: dict = None, grain_seed=None,
+                        lut_engine=None, lut_name=None, lut_strength=1.0,
+                        vibrance=0.0) -> np.ndarray:
     """Rendu unifié : base (Naturel/N&B) PUIS looks empilés PUIS corrections.
 
     - base « Naturel » : étalonnage v3, piloté par le profil dossier si fourni
@@ -364,7 +366,7 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
         out = arr01.copy()
         if not params._sliders_zero():
             out = apply_manual(out, params, grain_seed=grain_seed)
-        return out
+        return _apply_lut_vibrance(out, lut_engine, lut_name, lut_strength, vibrance)
 
     base = params.base()
     if base == "Noir & Blanc":
@@ -382,7 +384,19 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
 
     if not params.is_neutral():
         out = apply_manual(out, params, grain_seed=grain_seed)
-    return out
+
+    # LUT 3D + vibrance, en dernier (cohérent avec le chemin v3, étape 8)
+    return _apply_lut_vibrance(out, lut_engine, lut_name, lut_strength, vibrance)
+
+
+def _apply_lut_vibrance(out, lut_engine, lut_name, lut_strength, vibrance):
+    """Applique LUT (si fournie) puis vibrance (si non nulle). N&B exclu de la LUT."""
+    if lut_engine and lut_name:
+        out = lut_engine.apply(out, lut_name, lut_strength)
+    if vibrance:
+        from core.lut_engine import apply_vibrance
+        out = apply_vibrance(out, vibrance)
+    return np.clip(out, 0, 1)
 
 
 def render(arr01: np.ndarray, params: EditParams, grain_seed=None) -> np.ndarray:
