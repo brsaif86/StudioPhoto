@@ -7,6 +7,8 @@ Prérequis : pip install pyinstaller PySide6 Pillow numpy psutil
 """
 
 import os
+import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +23,47 @@ def log(msg: str) -> None:
     print(f"[build] {msg}", flush=True)
 
 
+def _on_rm_error(func, path, _exc):
+    """Retire l'attribut lecture seule puis réessaie (fichiers Windows)."""
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        pass
+
+
+def _rmtree(path: Path) -> None:
+    """shutil.rmtree compatible 3.11/3.12+ avec gestion lecture seule."""
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_on_rm_error)
+    else:
+        shutil.rmtree(path, onerror=lambda f, p, e: _on_rm_error(f, p, e))
+
+
+def clean_previous(exe_name: str) -> bool:
+    """Supprime build/ et dist/<exe> avant le build.
+
+    Retourne False si un fichier reste verrouillé (app encore ouverte).
+    """
+    targets = [ROOT / "build", ROOT / "dist" / exe_name, ROOT / "dist" / f"{exe_name}.exe"]
+    for t in targets:
+        if not t.exists():
+            continue
+        try:
+            _rmtree(t) if t.is_dir() else os.remove(t)
+        except PermissionError:
+            log("─" * 58)
+            log("ERREUR : impossible de nettoyer dist/ — un fichier est VERROUILLÉ.")
+            log("L'application StudioPhoto est probablement encore OUVERTE.")
+            log("→ Ferme TOUTES les fenêtres de StudioPhoto puis relance le build.")
+            log("  (Gestionnaire des tâches → terminer les StudioPhoto restants)")
+            log("─" * 58)
+            return False
+        except Exception as exc:
+            log(f"Nettoyage partiel ({t.name}) : {exc}")
+    return True
+
+
 def main() -> int:
     # 1. Version
     sys.path.insert(0, str(ROOT))
@@ -31,6 +74,10 @@ def main() -> int:
         return 1
     exe_name = f"StudioPhoto-{__version__}"
     log(f"Version : {__version__}  ->  {exe_name}")
+
+    # 1b. Nettoyage des sorties précédentes (évite les verrous PyInstaller)
+    if not clean_previous(exe_name):
+        return 1
 
     # 2. Icône (régénère ICO + PNG carré si la source existe)
     if (ROOT / "app_icon.png").exists():
