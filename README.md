@@ -133,11 +133,75 @@ l'utilisateur dézippe et double-clique — aucune installation, aucun Python re
 
 ---
 
+## Build macOS (Intel & Apple Silicon)
+
+PyInstaller **ne fait pas de cross-compilation** : il faut builder **sur** un Mac,
+et le binaire produit correspond à l'architecture de cette machine
+(`arm64` sur Apple Silicon, `x86_64` sur Intel).
+
+### Méthode rapide (script fourni)
+
+```bash
+chmod +x build_mac.sh
+./build_mac.sh
+```
+
+Le script crée le venv, installe les dépendances, lance les tests et build.
+
+### Méthode manuelle (pas à pas)
+
+```bash
+# 1. Python 3.11 (si besoin)
+brew install python@3.11
+
+# 2. Récupérer le projet
+git clone https://github.com/brsaif86/StudioPhoto.git
+cd StudioPhoto
+
+# 3. Environnement + dépendances (sans torch)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 4. (Optionnel) Modèle de classification dans assets/
+#    - soit copier le dossier assets/ depuis une autre machine,
+#    - soit le régénérer :
+#        pip install -r requirements-dev.txt
+#        python tools/export_clip_assets.py --model ViT-B-32 --pretrained laion2b_s34b_b79k
+
+# 5. Tester puis builder
+python -m pytest tests/ -q
+python build.py            # --onedir si assets/ présents, sinon --onefile
+```
+
+### Lancer / distribuer sur Mac
+
+```bash
+# Lancement
+open dist/StudioPhoto-<version>/StudioPhoto-<version>      # onedir
+# ou ./dist/StudioPhoto-<version>                          # onefile
+
+# 1er lancement bloqué par Gatekeeper (app non signée) :
+xattr -dr com.apple.quarantine dist/StudioPhoto-*
+# ou : clic droit sur l'app → Ouvrir → Ouvrir
+```
+
+> **Architecture** : sur un iMac Intel, le binaire produit est `x86_64` —
+> c'est le build Intel que la CI GitHub ne fournit pas (voir ci-dessous).
+> `build.py` gère seul le séparateur `:` de PyInstaller sous macOS.
+
+---
+
 ## CI multi-plateforme
 
 `.github/workflows/build.yml` — déclenché sur tag `v*` ou manuellement.
-Matrice : `windows-latest` · `macos-13` (Intel) · `macos-14` (Apple Silicon).
-Sur tag, une **Release GitHub** est créée avec les artefacts.
+Matrice : `windows-latest` · `macos-14` (Apple Silicon).
+Sur tag, une **Release GitHub** est créée avec les artefacts (`if: always()`).
+
+> **macOS Intel n'est PAS buildé en CI** : les runners `macos-13` de GitHub sont
+> trop souvent saturés et bloquaient la Release. → builder l'Intel **en local**
+> sur un Mac Intel (section ci-dessus).
 
 > Les builds CI sont **sans le modèle** (exclu du dépôt) → onglet Classification
 > inactif. Seul un build local avec `assets/` peuplé embarque le tri auto.

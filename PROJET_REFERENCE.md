@@ -354,6 +354,16 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
   instantané, lanceur 5.9 Mo) ; `--onefile` sinon. `STUDIOPHOTO_ONEFILE=1` force.
 - `--exclude-module torch …` : torch ne fuite plus dans l'exe.
 
+### Build macOS
+- **PyInstaller ne cross-compile pas** : Windows build Windows, Mac build Mac.
+  Le binaire = arch de la machine (arm64 Silicon / x86_64 Intel).
+- `build_mac.sh` : script clé en main (venv + deps + tests + `build.py`).
+- README : section « Build macOS (Intel & Apple Silicon) » pas à pas + Gatekeeper
+  (`xattr -dr com.apple.quarantine`).
+- **macOS Intel retiré de la CI** : runners `macos-13` saturés bloquaient le job
+  `release`. Build Intel = en local sur un Mac Intel. CI = Windows + Silicon,
+  `release: if: always()`.
+
 ### Pièges Windows rencontrés (et corrigés)
 | Symptôme | Cause | Fix |
 |----------|-------|-----|
