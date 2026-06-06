@@ -42,6 +42,19 @@ def main() -> int:
 
     has_ico = (ROOT / "app_icon.ico").exists()
     has_sq  = (ROOT / "app_icon_square.png").exists()
+    assets = ROOT / "assets"
+    has_assets = assets.exists() and any(
+        p.suffix in {".onnx", ".npy", ".json"} for p in assets.iterdir()
+    )
+
+    # Mode de packaging :
+    #   --onefile : 1 exe (démarrage lent si gros modèle, ré-extraction temp)
+    #   --onedir  : dossier exe + _internal (démarrage instantané) — défaut
+    #               quand le modèle de classification est embarqué.
+    # Forçable par variable d'env STUDIOPHOTO_ONEFILE=1.
+    onefile = os.environ.get("STUDIOPHOTO_ONEFILE") == "1" or not has_assets
+    mode_flag = "--onefile" if onefile else "--onedir"
+    log(f"Mode packaging : {mode_flag}")
 
     # 3. Arguments PyInstaller
     # Dépendances DEV uniquement (export des assets) — jamais dans l'exe.
@@ -51,7 +64,7 @@ def main() -> int:
     ]
     args = [
         sys.executable, "-m", "PyInstaller",
-        "--onefile", "--windowed", "--noconfirm",
+        mode_flag, "--windowed", "--noconfirm",
         "--name", exe_name,
         "--add-data", f"core{SEP}core",
         "--add-data", f"ui{SEP}ui",
@@ -65,8 +78,7 @@ def main() -> int:
         args += ["--add-data", f"app_icon_square.png{SEP}."]
 
     # Assets de classification (ONNX + embeddings) si présents
-    assets = ROOT / "assets"
-    if assets.exists() and any(assets.iterdir()):
+    if has_assets:
         log("Inclusion des assets de classification.")
         args += ["--add-data", f"assets{SEP}assets"]
     else:
@@ -82,7 +94,10 @@ def main() -> int:
         return result.returncode
 
     ext = ".exe" if os.name == "nt" else ""
-    out = ROOT / "dist" / f"{exe_name}{ext}"
+    if onefile:
+        out = ROOT / "dist" / f"{exe_name}{ext}"
+    else:
+        out = ROOT / "dist" / exe_name / f"{exe_name}{ext}"
     log(f"OK — exécutable : {out}")
     return 0
 
