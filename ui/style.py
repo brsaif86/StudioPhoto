@@ -250,13 +250,13 @@ QLabel#hint_label {{
     background: transparent;
 }}
 
-/* ── Buttons ─────────────────────────────────────────────── */
+/* ── Buttons (compacts) ──────────────────────────────────── */
 QPushButton {{
     background-color: {BG3};
     color: {TEXT1};
     border: 1px solid {BORDER};
     border-radius: 4px;
-    padding: 7px 14px;
+    padding: 4px 10px;
     font-size: 12px;
 }}
 
@@ -274,12 +274,12 @@ QPushButton#btn_run {{
     background-color: {ACCENT};
     color: #0D0D0D;
     border: none;
-    border-radius: 5px;
-    padding: 8px 22px;
+    border-radius: 4px;
+    padding: 6px 16px;
     font-size: 12px;
     font-weight: 700;
-    letter-spacing: 1px;
-    min-width: 100px;
+    letter-spacing: 0.5px;
+    min-width: 90px;
 }}
 
 QPushButton#btn_run:hover {{
@@ -301,10 +301,9 @@ QPushButton#btn_cancel {{
     background-color: transparent;
     color: {TEXT3};
     border: 1px solid {BORDER};
-    border-radius: 5px;
-    padding: 10px 20px;
+    border-radius: 4px;
+    padding: 6px 14px;
     font-size: 12px;
-    min-height: 38px;
 }}
 
 QPushButton#btn_cancel:hover:enabled {{
@@ -324,9 +323,9 @@ QPushButton#btn_browse {{
     color: {TEXT2};
     border: 1px solid {BORDER};
     border-radius: 4px;
-    padding: 7px 14px;
+    padding: 4px 9px;
     font-size: 11px;
-    min-width: 88px;
+    min-width: 0;
 }}
 
 QPushButton#btn_browse:hover {{

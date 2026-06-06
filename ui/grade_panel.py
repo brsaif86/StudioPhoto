@@ -42,16 +42,15 @@ class GradePanel(QWidget):
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 4, 0, 0)
         root.setSpacing(14)
-        root.addWidget(self._build_preview_column(), stretch=1)
+        root.addWidget(self._build_preview_column(), stretch=6)   # aperçu 60 %
 
         self.editor = EditorPanel()
-        self.editor.setMinimumWidth(280)
-        self.editor.setMaximumWidth(320)
+        self.editor.setMinimumWidth(260)                          # éditeur 40 %
         self.editor.changed.connect(self._load_current_preview)
         self.editor.export_requested.connect(self._export_current)
         self.editor.pipette_toggled.connect(self.view.set_pick_mode)
         self.view.picked.connect(self.editor.set_white_balance)
-        root.addWidget(self.editor)
+        root.addWidget(self.editor, stretch=4)                    # éditeur 40 %
 
         self._footer = self._build_footer()      # placé par l'app en bas
 

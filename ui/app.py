@@ -167,13 +167,13 @@ class MainWindow(QMainWindow):
         self.btn_run = QPushButton("▶  LANCER")
         self.btn_run.setObjectName("btn_run")
         self.btn_run.setCursor(Qt.PointingHandCursor)
-        self.btn_run.setFixedHeight(38)
+        self.btn_run.setFixedHeight(34)
 
         self.btn_cancel = QPushButton("ANNULER")
         self.btn_cancel.setObjectName("btn_cancel")
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.setCursor(Qt.PointingHandCursor)
-        self.btn_cancel.setFixedHeight(38)
+        self.btn_cancel.setFixedHeight(34)
 
         self.btn_run.clicked.connect(self._on_run)
         self.btn_cancel.clicked.connect(self._on_cancel)
