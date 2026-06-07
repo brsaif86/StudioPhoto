@@ -336,15 +336,24 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 ### v1.2.0 — Onglet Aperçu + Classification
 - **Aperçu** (`ui/compare_panel.py`) : comparateur avant/après à curseur,
   `grade_preview()` en mémoire (rendu fidèle au lot), QThread.
-- **Classification / tri auto** (`core/classification.py`) :
-  - Zero-shot CLIP via **cv2 (prétraitement) + onnxruntime (inférence)**.
-    cv2.dnn ne sait pas exécuter les ViT → onnxruntime (toujours sans torch).
-  - 6 classes + « À revoir » ; confiance = softmax(`logit_scale`·cos) ; centrage
-    des embeddings texte (retrait 50 % composante commune).
-  - Mono-process batché ; manifest json/csv (défaut) ou tri copie/déplacement.
-  - `tools/export_clip_assets.py` (offline, torch) : ONNX (`dynamo=False`,
-    opset 14) + embeddings + meta.
-  - Validé sur jeu client étiqueté : Ktuba 95 %, Dance 92 %, Love 88 %.
+- **Classification / tri auto** (`core/classification.py`) — **3 moteurs**,
+  dispatcher `_make_classifier` (défaut Hybride, replis gracieux) :
+  - **Hybride** (`HybridClassifier`, défaut) : CLIP classe tout le lot, et seules
+    les images sous le `hybrid_threshold` (0.55) sont repassées à Ollama. Si l'un
+    des deux manque → l'autre seul. Vitesse de CLIP + finesse du LLM.
+  - **Ollama** (`core/ollama_classify.py`) : modèle vision local (défaut
+    `qwen3.5:0.8b`, léger) interrogé en HTTP (`/api/generate`, `images:[base64]`,
+    `format:` schéma JSON enum, `temperature:0`, `think:false`). 100 % local,
+    aucune dépendance Python ajoutée (urllib stdlib). `OllamaClassifier` respecte
+    le contrat de `Classifier` (`labels` + `classify_paths`). Image par image
+    (`per_image` → batch_size=1). `list_vision_models()` alimente la liste
+    déroulante de l'UI (filtrée sur la capability `vision` via `/api/show`).
+  - **CLIP** (rapide) : zero-shot **cv2 + onnxruntime** (cv2.dnn ne sait
+    pas exécuter les ViT). Confiance = softmax(`logit_scale`·cos), embeddings
+    texte centrés. `tools/export_clip_assets.py` (offline, torch) génère
+    ONNX (`dynamo=False`, opset 14) + embeddings + meta.
+  - 6 classes + « À revoir » ; manifest json/csv (défaut) ou tri copie/déplacement.
+  - Validé (CLIP) sur jeu client étiqueté : Ktuba 95 %, Dance 92 %, Love 88 %.
 
 ### Icône & packaging
 - `make_ico.py` corrigé : recadre + carré + ICO multi-résolution (le PNG source

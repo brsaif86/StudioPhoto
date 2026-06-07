@@ -11,14 +11,17 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QCheckBox, QLabel, QComboBox,
     QFileDialog, QGroupBox, QSpinBox, QDoubleSpinBox,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from core.classification import DEFAULT_THRESHOLD, LABELS, assets_available
+from ui.workers import OllamaDetectWorker
 
 
 class ClassifyPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._ollama_url = "http://localhost:11434"
+        self._ollama_timeout = 300
         self._build()
 
     def _build(self) -> None:
@@ -76,10 +79,54 @@ class ClassifyPanel(QWidget):
         self.batch_spin.setRange(1, 64)
         self.batch_spin.setValue(16)
 
+        # Moteur d'analyse : Hybride (reco) · Ollama local · CLIP intégré
+        self.engine_combo = QComboBox()
+        self.engine_combo.addItem("Hybride — CLIP + Ollama si incertain (reco)", "hybrid")
+        self.engine_combo.addItem("Ollama local — analyse visuelle (qualité)", "ollama")
+        self.engine_combo.addItem("CLIP — intégré, rapide", "clip")
+        self.engine_combo.setToolTip(
+            "Hybride : CLIP classe tout en quelques secondes, et seules les photos "
+            "incertaines sont repassées à un modèle vision Ollama local.\n"
+            "Ollama : analyse visuelle locale pour tout (plus lent, ~secondes/photo).\n"
+            "CLIP : zero-shot embarqué, le plus rapide.")
+
+        # Modèle vision Ollama : liste déroulante des modèles détectés (éditable)
+        self.model_combo = QComboBox()
+        self.model_combo.setEditable(True)
+        self.model_combo.addItem("(auto — 1er modèle vision)", "")
+        self.model_combo.setToolTip(
+            "Modèle vision local. La liste se remplit avec les modèles Ollama "
+            "détectés ; tu peux aussi saisir un nom manuellement.")
+        self.btn_detect = QPushButton("Détecter")
+        self.btn_detect.setObjectName("btn_browse")
+        self.btn_detect.setFixedWidth(80)
+        self.btn_detect.setCursor(Qt.PointingHandCursor)
+        self.btn_detect.clicked.connect(lambda: self._detect_models(verbose=True))
+        model_row = QWidget()
+        mrl = QHBoxLayout(model_row)
+        mrl.setContentsMargins(0, 0, 0, 0)
+        mrl.setSpacing(6)
+        mrl.addWidget(self.model_combo, 1)
+        mrl.addWidget(self.btn_detect)
+
+        # Seuil hybride : sous cette confiance CLIP, on demande au LLM
+        self.hybrid_spin = QDoubleSpinBox()
+        self.hybrid_spin.setRange(0.0, 1.0)
+        self.hybrid_spin.setSingleStep(0.05)
+        self.hybrid_spin.setDecimals(2)
+        self.hybrid_spin.setValue(0.55)
+        self.hybrid_spin.setToolTip(
+            "Mode hybride : si la confiance de CLIP est sous ce seuil, la photo "
+            "est repassée au modèle Ollama. Plus haut = plus de photos au LLM "
+            "(plus lent, plus fin).")
+
         for row, (lbl_txt, widget) in enumerate([
-            ("Sortie :",  self.mode_combo),
-            ("Seuil :",   self.threshold_spin),
-            ("Lot :",     self.batch_spin),
+            ("Sortie :",       self.mode_combo),
+            ("Seuil :",        self.threshold_spin),
+            ("Lot :",          self.batch_spin),
+            ("Moteur :",       self.engine_combo),
+            ("Modèle :",       model_row),
+            ("Seuil hybride :", self.hybrid_spin),
         ]):
             lbl = QLabel(lbl_txt)
             lbl.setObjectName("form_label")
@@ -96,20 +143,83 @@ class ClassifyPanel(QWidget):
         cats.setWordWrap(True)
         og.addWidget(cats, 1, 3, 2, 1)
 
+        # État de détection Ollama (rempli par le worker)
+        self.ollama_status = QLabel("")
+        self.ollama_status.setObjectName("hint_label")
+        self.ollama_status.setWordWrap(True)
+        og.addWidget(self.ollama_status, 3, 3, 2, 1)
+
         root.addWidget(box_opt)
 
-        # ── Avertissement modèle absent ───────────────────────────────────────
-        if not assets_available():
-            warn = QLabel(
-                "⚠ Modèle de classification absent. Place mobileclip_image.onnx, "
-                "text_embeddings.npy et clip_meta.json dans le dossier assets/ "
-                "(génère-les avec tools/export_clip_assets.py)."
-            )
-            warn.setObjectName("hint_label")
-            warn.setWordWrap(True)
-            root.addWidget(warn)
+        # active/désactive modèle + seuil hybride selon le moteur
+        self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
+        self._on_engine_changed()
+
+        # ── Aide moteur ───────────────────────────────────────────────────────
+        hint = QLabel(
+            "Hybride/Ollama : 100 % local (Ollama doit être lancé). Le LLM vision "
+            "est plus lent (~secondes/photo) mais meilleur sur les catégories "
+            "subjectives ; CLIP reste instantané. Repli auto si Ollama est absent."
+            + ("" if assets_available()
+               else "  ⚠ CLIP non installé : génère ses assets avec "
+                    "tools/export_clip_assets.py.")
+        )
+        hint.setObjectName("hint_label")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
 
         root.addStretch()
+
+        self._detect_worker = None
+        # détection auto au démarrage (différée pour ne pas retarder l'affichage)
+        QTimer.singleShot(300, lambda: self._detect_models(verbose=False))
+
+    def _on_engine_changed(self, *_) -> None:
+        eng = self.engine_combo.currentData()
+        uses_ollama = eng in ("ollama", "hybrid")
+        self.model_combo.setEnabled(uses_ollama)
+        self.btn_detect.setEnabled(uses_ollama)
+        self.hybrid_spin.setEnabled(eng == "hybrid")
+
+    # ── Détection des modèles vision Ollama (hors thread UI) ──────────────────
+
+    def _detect_models(self, verbose: bool = False) -> None:
+        if self._detect_worker is not None:      # détection déjà en cours
+            return
+        if verbose:
+            self.ollama_status.setText("Détection d'Ollama en cours…")
+        self.btn_detect.setEnabled(False)
+        w = OllamaDetectWorker(self._ollama_url, parent=self)
+        w.done.connect(self._on_models_detected)
+        w.finished.connect(self._clear_detect_worker)
+        self._detect_worker = w
+        w.start()
+
+    def _clear_detect_worker(self) -> None:
+        self._detect_worker = None
+        self._on_engine_changed()                # restaure l'état des boutons
+
+    def _on_models_detected(self, up: bool, models: list) -> None:
+        current = self.model_combo.currentData() or self.model_combo.currentText().strip()
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        self.model_combo.addItem("(auto — 1er modèle vision)", "")
+        for m in models:
+            self.model_combo.addItem(m, m)
+        # restaure la sélection précédente si toujours présente
+        idx = self.model_combo.findData(current) if current else 0
+        self.model_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.model_combo.blockSignals(False)
+
+        if not up:
+            self.ollama_status.setText("⚠ Ollama non détecté (serveur éteint). "
+                                       "L'hybride utilisera CLIP seul.")
+        elif not models:
+            self.ollama_status.setText("⚠ Ollama lancé mais aucun modèle vision "
+                                       "installé (ex. ollama pull qwen2.5vl).")
+        else:
+            self.ollama_status.setText(f"✓ Ollama : {len(models)} modèle(s) vision "
+                                       f"détecté(s) — {', '.join(models)}")
 
     # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -124,6 +234,16 @@ class ClassifyPanel(QWidget):
         if path:
             edit.setText(path)
 
+    def _selected_model(self):
+        """Nom du modèle choisi, ou None pour « auto »."""
+        data = self.model_combo.currentData()
+        if data:                                   # vrai modèle sélectionné
+            return data
+        txt = self.model_combo.currentText().strip()
+        if not txt or txt.startswith("("):         # libellé « (auto …) »
+            return None
+        return txt                                 # nom saisi manuellement
+
     # ── Config ──────────────────────────────────────────────────────────────────
 
     def get_params(self) -> dict:
@@ -136,6 +256,11 @@ class ClassifyPanel(QWidget):
             "threshold":  self.threshold_spin.value(),
             "recursive":  self.recursive_cb.isChecked(),
             "batch_size": self.batch_spin.value(),
+            "engine":           self.engine_combo.currentData(),
+            "ollama_model":     self._selected_model(),
+            "ollama_url":       self._ollama_url,
+            "ollama_timeout":   self._ollama_timeout,
+            "hybrid_threshold": self.hybrid_spin.value(),
         }
 
     def load_config(self, cfg: dict) -> None:
@@ -146,6 +271,19 @@ class ClassifyPanel(QWidget):
         self.threshold_spin.setValue(cfg.get("classify_threshold", DEFAULT_THRESHOLD))
         self.batch_spin.setValue(cfg.get("classify_batch", 16))
         self.recursive_cb.setChecked(cfg.get("classify_recursive", True))
+        eidx = self.engine_combo.findData(cfg.get("classify_engine", "hybrid"))
+        self.engine_combo.setCurrentIndex(max(0, eidx))
+        m = (cfg.get("ollama_model", "") or "").strip()
+        if m:
+            if self.model_combo.findData(m) < 0:
+                self.model_combo.addItem(m, m)
+            self.model_combo.setCurrentIndex(self.model_combo.findData(m))
+        else:
+            self.model_combo.setCurrentIndex(0)
+        self.hybrid_spin.setValue(cfg.get("classify_hybrid_threshold", 0.55))
+        self._ollama_url     = cfg.get("ollama_url", "http://localhost:11434")
+        self._ollama_timeout = cfg.get("ollama_timeout", 300)
+        self._on_engine_changed()
 
     def save_config(self, cfg: dict) -> None:
         cfg["classify_source"]    = self.src_edit.text().strip()
@@ -154,3 +292,8 @@ class ClassifyPanel(QWidget):
         cfg["classify_threshold"] = self.threshold_spin.value()
         cfg["classify_batch"]     = self.batch_spin.value()
         cfg["classify_recursive"] = self.recursive_cb.isChecked()
+        cfg["classify_engine"]    = self.engine_combo.currentData()
+        cfg["classify_hybrid_threshold"] = self.hybrid_spin.value()
+        cfg["ollama_model"]       = self._selected_model() or ""
+        cfg["ollama_url"]         = getattr(self, "_ollama_url", "http://localhost:11434")
+        cfg["ollama_timeout"]     = getattr(self, "_ollama_timeout", 300)

@@ -11,8 +11,10 @@ Application photo autonome (Windows / macOS) — interface à **onglets en haut*
    - **corrections manuelles** (12 curseurs) ; **presets personnalisés** ;
      **pipette balance des blancs** ; **LUT 3D `.cube`** + vibrance ;
    - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
-2. **Classification / Tri auto** — zero-shot CLIP (OpenCV + onnxruntime, sans torch
-   au runtime) en 6 catégories de mariage + « À revoir ».
+2. **Classification / Tri auto** — 6 catégories de mariage + « À revoir », au choix
+   via **Hybride** (CLIP rapide + modèle vision **Ollama local** sur les cas
+   incertains, par défaut), **Ollama** seul, ou **CLIP** zero-shot (OpenCV +
+   onnxruntime). Modèle Ollama choisi dans une liste auto-détectée.
 3. **Renommage séquentiel** — par dossier, two-pass, dry-run, reprise.
 
 Version courante : voir `version.py` (`__version__`). Le titre de la fenêtre, le nom
@@ -102,9 +104,27 @@ python cli.py benchmark C:\Photos --workers 6 8 --sample 20
 
 `Preparations · Love Story · Atmosphere · Family · Ktuba and Huppa · Dance`
 
-Pipeline : `cv2` (décodage/prétraitement) → encodeur image CLIP **ONNX** exécuté
-par **onnxruntime** → similarité avec des **embeddings texte précalculés** →
-softmax × `logit_scale`. Aucun torch au runtime.
+**Trois moteurs**, sélectionnables dans l'onglet (champ *Moteur*) :
+
+- **Hybride** *(par défaut, recommandé)* — CLIP classe **tout** le lot en quelques
+  secondes, et seules les photos dont la confiance CLIP passe **sous le seuil
+  hybride** sont repassées à un modèle vision **Ollama local**. On garde la
+  vitesse de CLIP tout en gagnant en finesse sur les catégories subjectives
+  (Ambiance, Famille). Si Ollama est absent → CLIP seul (repli transparent).
+- **Ollama local** — un modèle vision local « regarde » **chaque** photo et choisit
+  une catégorie + confiance via une **sortie JSON structurée** (`format` enum).
+  100 % local, le plus fin, mais lent (~quelques s/photo). Repli auto sur CLIP.
+- **CLIP** — zero-shot `cv2` → encodeur image **ONNX** (onnxruntime) → similarité
+  avec des **embeddings texte précalculés** → softmax × `logit_scale`. Le plus
+  rapide, intégré, aucun torch au runtime.
+
+> **Choix du modèle** : le champ *Modèle* est une **liste déroulante alimentée
+> automatiquement** par les modèles vision détectés dans Ollama (bouton
+> *Détecter* pour rafraîchir) ; `(auto)` prend le premier modèle vision dispo.
+> Le backend passe par HTTP (`localhost:11434`) : **aucune dépendance Python
+> ajoutée**, l'exe reste autonome (Ollama est un outil externe optionnel, modèle
+> à capacité *vision* requis). À chaud : ~5–6 s/photo sur CPU 4B — d'où le mode
+> hybride pour les gros lots.
 
 ### Générer le modèle (une fois, sur machine dev)
 
@@ -259,7 +279,9 @@ core/                      moteur pur, AUCUNE dépendance UI
                            vibrance) — numpy + cv2
   renaming.py              rename_folder, collect_rename_targets
   classification.py        zero-shot CLIP (preprocess cv2, Classifier onnxruntime,
-                           run_classify_batch, manifest, tri physique)
+                           run_classify_batch + dispatcher moteur, manifest, tri)
+  ollama_classify.py       backend vision local (OllamaClassifier, HTTP stdlib,
+                           sortie JSON structurée) — repli auto sur CLIP
   runner.py                run_grade_batch (pool multiprocessing + callbacks)
   config.py                persistance JSON (%APPDATA%/StudioPhoto/)
 ui/                        PySide6 — style 100% via ui/style.py (QSS), zéro inline

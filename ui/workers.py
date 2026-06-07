@@ -88,6 +88,25 @@ class RenameWorker(QThread):
         self.finished.emit(total_renamed, dry_run)
 
 
+class OllamaDetectWorker(QThread):
+    """Détecte (hors thread UI) le serveur Ollama et ses modèles vision."""
+    done = Signal(bool, list)        # (serveur_up, [noms_modèles_vision])
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self._url = url
+
+    def run(self) -> None:
+        try:
+            from core.ollama_classify import server_up, list_vision_models
+            if not server_up(self._url, timeout=4.0):
+                self.done.emit(False, [])
+                return
+            self.done.emit(True, list_vision_models(self._url, timeout=8.0))
+        except Exception:
+            self.done.emit(False, [])
+
+
 class ClassifyWorker(QThread):
     log_line  = Signal(str)
     progress  = Signal(int, int)          # (done, total)
@@ -113,6 +132,11 @@ class ClassifyWorker(QThread):
             threshold    = p.get("threshold", DEFAULT_THRESHOLD),
             recursive    = p.get("recursive", True),
             batch_size   = p.get("batch_size", 16),
+            engine       = p.get("engine", "hybrid"),
+            ollama_model = p.get("ollama_model"),
+            ollama_url   = p.get("ollama_url"),
+            ollama_timeout = p.get("ollama_timeout", 300),
+            hybrid_threshold = p.get("hybrid_threshold", 0.55),
             on_log       = self.log_line.emit,
             on_progress  = self.progress.emit,
             on_current   = self.current.emit,
