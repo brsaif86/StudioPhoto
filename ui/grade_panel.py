@@ -478,7 +478,13 @@ class GradePanel(QWidget):
         self.workers_spin.setValue(cfg.get("grade_workers", default_workers()))
         self.quality_spin.setValue(cfg.get("grade_quality", DEFAULT_QUALITY))
 
-        self.lut_dir_edit.setText(cfg.get("lut_dir", "assets/luts"))
+        from core.lut_engine import default_lut_dir, LutEngine
+        lut_dir = cfg.get("lut_dir") or str(default_lut_dir())
+        # auto-réparation : si le dossier ne contient aucune LUT (chemin obsolète,
+        # dossier supprimé, etc.), on retombe sur les LUT livrées avec l'app.
+        if not LutEngine(lut_dir).list_luts():
+            lut_dir = str(default_lut_dir())
+        self.lut_dir_edit.setText(lut_dir)
         self._update_lut_list()
 
         lut_name = cfg.get("lut_name")

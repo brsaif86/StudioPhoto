@@ -4,11 +4,22 @@ core/lut_engine.py — Moteur de LUT 3D et Vibrance
 Gestion du chargement de fichiers .cube et application par interpolation trilinéaire.
 """
 
+import sys
 import numpy as np
 import cv2
 from pathlib import Path
 from functools import lru_cache
 from typing import List, Tuple, Optional
+
+
+def default_lut_dir() -> Path:
+    """Dossier des LUT livrées, résolu en dev comme en .exe (PyInstaller).
+
+    En exe figé, les assets sont extraits dans sys._MEIPASS ; en dev on
+    pointe sur le dossier assets/ du dépôt.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return base / "assets" / "luts"
 
 
 def load_cube_lut(path) -> Tuple[np.ndarray, int]:
