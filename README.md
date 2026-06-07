@@ -11,10 +11,12 @@ Application photo autonome (Windows / macOS) — interface à **onglets en haut*
    - **corrections manuelles** (12 curseurs) ; **presets personnalisés** ;
      **pipette balance des blancs** ; **LUT 3D `.cube`** + vibrance ;
    - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
-2. **Classification / Tri auto** — 6 catégories de mariage + « À revoir », au choix
-   via **Hybride** (CLIP rapide + modèle vision **Ollama local** sur les cas
-   incertains, par défaut), **Ollama** seul, ou **CLIP** zero-shot (OpenCV +
-   onnxruntime). Modèle Ollama choisi dans une liste auto-détectée.
+2. **Classification / Tri auto** — catégories de mariage + « À revoir », au choix :
+   - **Few-shot** (recommandé) — **apprend de tes dossiers déjà triés** (embeddings
+     CLIP + tête logistique) : rapide (~ms/photo), 100 % local, le plus fiable car
+     il apprend *ta* définition des catégories ;
+   - **Hybride** — CLIP rapide + modèle vision **Ollama local** sur les cas incertains ;
+   - **Ollama** seul, ou **CLIP** zero-shot (OpenCV + onnxruntime).
 3. **Renommage séquentiel** — par dossier, two-pass, dry-run, reprise.
 
 Version courante : voir `version.py` (`__version__`). Le titre de la fenêtre, le nom
@@ -171,8 +173,10 @@ pytest tests/ -v
   isolation des images corrompues.
 - `test_ollama_classify.py` — backend Ollama (mocké) : prompt, schéma JSON,
   `resolve_model`, mode **hybride** (garde CLIP / adopte le LLM / repli).
+- `test_fewshot.py` — moteur **few-shot** : régression logistique, entraînement
+  depuis dossiers triés, sauvegarde/chargement, inférence, gestion d'erreur.
 
-> 79 tests au total.
+> 85 tests au total.
 
 ---
 
@@ -284,6 +288,8 @@ core/                      moteur pur, AUCUNE dépendance UI
                            run_classify_batch + dispatcher moteur, manifest, tri)
   ollama_classify.py       backend vision local (OllamaClassifier, HTTP stdlib,
                            sortie JSON structurée) — repli auto sur CLIP
+  fewshot.py               few-shot : apprend des dossiers triés (embeddings
+                           CLIP + régression logistique), modèle en %APPDATA%
   runner.py                run_grade_batch (pool multiprocessing + callbacks)
   config.py                persistance JSON (%APPDATA%/StudioPhoto/)
 ui/                        PySide6 — style 100% via ui/style.py (QSS), zéro inline
@@ -304,7 +310,7 @@ version.py                 source unique de la version
 ui_entry.py                point d'entrée (freeze_support + QApplication + icône)
 assets/luts/               LUT .cube (Identity.cube fourni)
 assets/                    modèle CLIP (local, gitignored) + README
-tests/                     pytest (79)
+tests/                     pytest (85)
 ```
 
 ---

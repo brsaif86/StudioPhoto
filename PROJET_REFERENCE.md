@@ -336,9 +336,15 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 ### v1.2.0 — Onglet Aperçu + Classification
 - **Aperçu** (`ui/compare_panel.py`) : comparateur avant/après à curseur,
   `grade_preview()` en mémoire (rendu fidèle au lot), QThread.
-- **Classification / tri auto** (`core/classification.py`) — **3 moteurs**,
-  dispatcher `_make_classifier` (défaut Hybride, replis gracieux) :
-  - **Hybride** (`HybridClassifier`, défaut) : CLIP classe tout le lot, et seules
+- **Classification / tri auto** (`core/classification.py`) — **4 moteurs**,
+  dispatcher `_make_classifier` (défaut Few-shot, replis gracieux) :
+  - **Few-shot** (`core/fewshot.py`, défaut) : apprend des dossiers **déjà triés**
+    (un sous-dossier = une catégorie). Embeddings CLIP L2 + **régression
+    logistique multinomiale numpy** (aucune dépendance ajoutée). Entraînement en
+    secondes, inférence en ms/photo, modèle dans `%APPDATA%/StudioPhoto/
+    fewshot_model.npz`. Le plus fiable car il apprend la définition réelle des
+    catégories du client. `FewShotTrainWorker` (UI) entraîne hors thread.
+  - **Hybride** (`HybridClassifier`) : CLIP classe tout le lot, et seules
     les images sous le `hybrid_threshold` (0.55) sont repassées à Ollama. Si l'un
     des deux manque → l'autre seul. Vitesse de CLIP + finesse du LLM.
   - **Ollama** (`core/ollama_classify.py`) : modèle vision local (défaut
@@ -417,6 +423,14 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
   `transpose(2,1,0,3)`) ; cache raté par image (lru_cache sur méthode →
   fonction module) ; LUT ignorée avec l'éditeur ; test de régression réécrit.
 
+### v3.4 — Classification few-shot (apprend tes tris)
+- `core/fewshot.py` : apprend des dossiers déjà triés (embeddings CLIP +
+  régression logistique numpy) → rapide, 100 % local, bien plus fiable que le
+  zero-shot/LLM sur une taxonomie subjective. Modèle dans `%APPDATA%`.
+- UI : moteur **Few-shot** par défaut + section « APPRENTISSAGE » (dossier
+  d'exemples + bouton Entraîner + état du modèle). `FewShotTrainWorker`,
+  annulation coopérative, précision validation 85/15 affichée.
+
 ### v3.3 — Classification hybride + LUT d'exemple + presets validés
 - **Classification hybride** (`HybridClassifier`, défaut) : CLIP classe tout, et
   seules les images sous le `hybrid_threshold` (0.55) sont repassées à Ollama.
@@ -441,24 +455,25 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 | 3.0.0 | Éditeur interactif (presets empilables, curseurs, pipette, UI onglets) |
 | 3.2.0 | Moteur LUT 3D `.cube` + vibrance (revue & correctifs) |
 | 3.3.0 | Classification hybride CLIP+Ollama + LUT d'exemple + presets validés |
+| 3.4.0 | Classification **few-shot** (apprend les dossiers triés) — rapide & fiable |
 
 ---
 
-## 18. État actuel (v3.3.0)
+## 18. État actuel (v3.4.0)
 
 - ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
-- ✅ `core/` pur testable seul ; **79 tests** au vert (régression pixel, LUT, éditeur, hybride)
+- ✅ `core/` pur testable seul ; **85 tests** au vert (régression pixel, LUT, éditeur, hybride, few-shot)
 - ✅ Éditeur : presets validés (Naturel/N&B/Cinématique), 12 curseurs (ordre pro), pipette, LUT 3D
-- ✅ Classification : moteur **Hybride** (CLIP+Ollama), Ollama seul ou CLIP ; liste de modèles vision auto-détectés
+- ✅ Classification : **4 moteurs** (Few-shot défaut, Hybride, Ollama, CLIP) ; few-shot apprend tes tris
 - ✅ Workers adaptatifs (60 % cœurs physiques), série cohérente par défaut
 - ✅ CLI `grade` / `rename` / `classify` / `benchmark`
 - ✅ UI dark pro, onglets en haut, style 100 % QSS
 - ✅ Ollama 100 % local (urllib stdlib, sortie JSON structurée), repli auto CLIP
 - ✅ LUT `.cube` (R/B corrigé, cache par worker) + 6 LUT d'exemple embarquées
-- ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 3.3.0 OK
+- ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 3.4.0 OK
 - ⚠ macOS Intel = build local (retiré de la CI)
 - ⚠ Exes CI sans modèle CLIP (gitignored) ; Ollama requis pour l'analyse vision
 
 ---
 
-*Document de référence — mis à jour jusqu'à la v3.3.0.*
+*Document de référence — mis à jour jusqu'à la v3.4.0.*

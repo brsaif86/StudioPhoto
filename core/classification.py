@@ -338,6 +338,25 @@ def _make_classifier(engine, assets_dir, ollama_model, ollama_url,
       manque, on utilise l'autre seul.
     Retourne un classifieur (`.labels` + `.classify_paths`) ou None.
     """
+    if engine == "fewshot":
+        from core.fewshot import load_model, FewShotClassifier
+        model = load_model()
+        embedder = _build_clip(assets_dir, on_log)   # CLIP sert d'encodeur
+        if model and embedder:
+            fs = FewShotClassifier.from_model(embedder, model)
+            acc = model.get("acc", float("nan"))
+            acc_txt = f", préc. {acc:.0%}" if acc == acc else ""
+            on_log(f"  Moteur : Few-shot · {len(model['labels'])} catégories "
+                   f"({model['n']} exemples{acc_txt})")
+            return fs
+        if not model:
+            on_log("  ✗ Aucun modèle few-shot entraîné — clique « Entraîner » "
+                   "(dossier d'exemples triés par catégorie).")
+        if embedder:
+            on_log("  ⚠ Repli sur CLIP zero-shot.")
+            return embedder
+        return None
+
     if engine == "hybrid":
         clip = _build_clip(assets_dir, on_log)
         oll = _build_ollama(ollama_model, ollama_url, ollama_timeout, on_log)

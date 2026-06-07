@@ -11,13 +11,15 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QCheckBox, QLabel, QComboBox,
     QFileDialog, QGroupBox, QSpinBox, QDoubleSpinBox,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 
 from core.classification import DEFAULT_THRESHOLD, LABELS, assets_available
 from ui.workers import OllamaDetectWorker
 
 
 class ClassifyPanel(QWidget):
+    train_requested = Signal(str)        # (dossier d'apprentissage trié)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._ollama_url = "http://localhost:11434"
@@ -81,14 +83,17 @@ class ClassifyPanel(QWidget):
 
         # Moteur d'analyse : Hybride (reco) · Ollama local · CLIP intégré
         self.engine_combo = QComboBox()
-        self.engine_combo.addItem("Hybride — CLIP + Ollama si incertain (reco)", "hybrid")
+        self.engine_combo.addItem("Few-shot — apprend tes tris (fiable + rapide)", "fewshot")
+        self.engine_combo.addItem("Hybride — CLIP + Ollama si incertain", "hybrid")
         self.engine_combo.addItem("Ollama local — analyse visuelle (qualité)", "ollama")
-        self.engine_combo.addItem("CLIP — intégré, rapide", "clip")
+        self.engine_combo.addItem("CLIP — zero-shot intégré, rapide", "clip")
         self.engine_combo.setToolTip(
-            "Hybride : CLIP classe tout en quelques secondes, et seules les photos "
-            "incertaines sont repassées à un modèle vision Ollama local.\n"
+            "Few-shot : apprend de tes dossiers déjà triés (le plus fiable, rapide, "
+            "100 % local) — à entraîner ci-dessous.\n"
+            "Hybride : CLIP classe tout, et seules les photos incertaines passent à "
+            "un modèle vision Ollama local.\n"
             "Ollama : analyse visuelle locale pour tout (plus lent, ~secondes/photo).\n"
-            "CLIP : zero-shot embarqué, le plus rapide.")
+            "CLIP : zero-shot embarqué, rapide mais limité sur catégories subjectives.")
 
         # Modèle vision Ollama : liste déroulante des modèles détectés (éditable)
         self.model_combo = QComboBox()
@@ -151,9 +156,41 @@ class ClassifyPanel(QWidget):
 
         root.addWidget(box_opt)
 
+        # ── Apprentissage few-shot ────────────────────────────────────────────
+        box_fs = QGroupBox("APPRENTISSAGE (FEW-SHOT)")
+        fg = QGridLayout(box_fs)
+        fg.setColumnStretch(1, 1)
+
+        self.train_edit = self._path_input(
+            "Dossier d'exemples : un sous-dossier par catégorie (déjà triés)…")
+        lbl_tr = QLabel("Exemples :")
+        lbl_tr.setObjectName("form_label")
+        lbl_tr.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        btn_tr = QPushButton("Parcourir…")
+        btn_tr.setObjectName("btn_browse")
+        btn_tr.setFixedWidth(90)
+        btn_tr.setCursor(Qt.PointingHandCursor)
+        btn_tr.clicked.connect(lambda: self._browse(self.train_edit))
+        self.btn_train = QPushButton("Entraîner")
+        self.btn_train.setObjectName("btn_browse")
+        self.btn_train.setFixedWidth(90)
+        self.btn_train.setCursor(Qt.PointingHandCursor)
+        self.btn_train.clicked.connect(self._on_train_clicked)
+        fg.addWidget(lbl_tr, 0, 0)
+        fg.addWidget(self.train_edit, 0, 1)
+        fg.addWidget(btn_tr, 0, 2)
+        fg.addWidget(self.btn_train, 0, 3)
+
+        self.model_status = QLabel("")
+        self.model_status.setObjectName("hint_label")
+        self.model_status.setWordWrap(True)
+        fg.addWidget(self.model_status, 1, 1, 1, 3)
+        root.addWidget(box_fs)
+
         # active/désactive modèle + seuil hybride selon le moteur
         self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
         self._on_engine_changed()
+        self.refresh_model_info()
 
         # ── Aide moteur ───────────────────────────────────────────────────────
         hint = QLabel(
@@ -234,6 +271,36 @@ class ClassifyPanel(QWidget):
         if path:
             edit.setText(path)
 
+    # ── Apprentissage few-shot ────────────────────────────────────────────────
+
+    def _on_train_clicked(self) -> None:
+        folder = self.train_edit.text().strip()
+        if not folder or not Path(folder).is_dir():
+            self.model_status.setText("⚠ Choisis un dossier d'exemples valide "
+                                      "(un sous-dossier par catégorie).")
+            return
+        self.btn_train.setEnabled(False)
+        self.train_requested.emit(folder)
+
+    def refresh_model_info(self) -> None:
+        """Met à jour l'étiquette d'état du modèle few-shot (et réactive Entraîner)."""
+        self.btn_train.setEnabled(True)
+        try:
+            from core.fewshot import model_info
+            info = model_info()
+        except Exception:
+            info = None
+        if not info:
+            self.model_status.setText(
+                "Aucun modèle few-shot entraîné. Indique un dossier d'exemples "
+                "déjà triés (un sous-dossier par catégorie) puis « Entraîner ».")
+            return
+        acc = info.get("acc", float("nan"))
+        acc_txt = f" · préc. {acc:.0%}" if acc == acc else ""
+        self.model_status.setText(
+            f"✓ Modèle few-shot : {len(info['labels'])} catégories "
+            f"({', '.join(info['labels'])}) · {info['n']} exemples{acc_txt}")
+
     def _selected_model(self):
         """Nom du modèle choisi, ou None pour « auto »."""
         data = self.model_combo.currentData()
@@ -271,7 +338,8 @@ class ClassifyPanel(QWidget):
         self.threshold_spin.setValue(cfg.get("classify_threshold", DEFAULT_THRESHOLD))
         self.batch_spin.setValue(cfg.get("classify_batch", 16))
         self.recursive_cb.setChecked(cfg.get("classify_recursive", True))
-        eidx = self.engine_combo.findData(cfg.get("classify_engine", "hybrid"))
+        self.train_edit.setText(cfg.get("classify_train_dir", ""))
+        eidx = self.engine_combo.findData(cfg.get("classify_engine", "fewshot"))
         self.engine_combo.setCurrentIndex(max(0, eidx))
         m = (cfg.get("ollama_model", "") or "").strip()
         if m:
@@ -292,6 +360,7 @@ class ClassifyPanel(QWidget):
         cfg["classify_threshold"] = self.threshold_spin.value()
         cfg["classify_batch"]     = self.batch_spin.value()
         cfg["classify_recursive"] = self.recursive_cb.isChecked()
+        cfg["classify_train_dir"] = self.train_edit.text().strip()
         cfg["classify_engine"]    = self.engine_combo.currentData()
         cfg["classify_hybrid_threshold"] = self.hybrid_spin.value()
         cfg["ollama_model"]       = self._selected_model() or ""
