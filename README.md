@@ -6,8 +6,8 @@ Application photo autonome (Windows / macOS) — interface à **onglets en haut*
 1. **Étalonnage** — éditeur interactif avec aperçu avant/après intégré :
    - base adaptative v3 (couleur + N&B, anti-surexposition, blancs neutres, peau
      naturelle) + **mode série cohérente** (rendu uniforme par dossier) ;
-   - **presets empilables** (Naturel, Cinématique, Clair & Aéré, Peau douce,
-     Vintage, Golden Hour, Froid, Noir & Blanc) ;
+   - **presets** : Naturel (étalonnage validé client, répond à toutes les
+     exigences), Noir & Blanc, et touche **Cinématique** empilable ;
    - **corrections manuelles** (12 curseurs) ; **presets personnalisés** ;
      **pipette balance des blancs** ; **LUT 3D `.cube`** + vibrance ;
    - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
@@ -50,7 +50,7 @@ Dossiers + Options + LANCER/ANNULER à gauche, console à droite.
 
 | Bloc | Détail |
 |------|--------|
-| **Presets automatiques** | Empilables : 1 base (Naturel = v3, ou Noir & Blanc) + N looks (Cinématique, Clair & Aéré, Peau douce, Vintage, Golden Hour, Froid). Ex. *Naturel + Cinématique*. |
+| **Presets automatiques** | 1 base (Naturel = v3 validé client, ou Noir & Blanc) + touche **Cinématique** empilable. Ex. *Naturel + Cinématique* = couleurs naturelles avec une touche ciné, cohérentes sur toute la série. |
 | **Mes presets** | Sauver / appliquer / supprimer ses propres réglages (persistés en config). |
 | **Corrections manuelles** | 12 curseurs bipolaires (0 = neutre) : Exposition, Contraste, Hautes lumières, Ombres, Température, Teinte, Vibrance, Saturation, Clarté, Netteté, Vignettage, Grain. |
 | **Pipette BdB** | Clic sur une zone neutre de l'aperçu → corrige automatiquement la balance des blancs (température + teinte). |

@@ -29,7 +29,7 @@ def test_natural_zero_equals_v3():
 def test_editparams_is_neutral():
     assert EditParams().is_neutral()
     assert not EditParams(exposure=10).is_neutral()
-    assert not EditParams(presets=["Vintage"]).is_neutral()
+    assert not EditParams(presets=["Noir & Blanc"]).is_neutral()
     assert not EditParams(presets=["Naturel", "Cinématique"]).is_neutral()
 
 
@@ -106,6 +106,15 @@ def test_grain_adds_variation():
 
 def test_render_to_image_type():
     arr = patch(0.5, 0.45, 0.4)
-    img = render_to_image(arr, EditParams(presets=["Vintage"]))
+    img = render_to_image(arr, EditParams(presets=["Cinématique"]))
     assert isinstance(img, Image.Image)
     assert img.size == (48, 48)
+
+
+def test_removed_look_falls_back_to_naturel():
+    """Un look retiré (ex. ancien « Vintage » d'une config sauvegardée) est
+    ignoré au rendu : le résultat est identique au preset Naturel seul."""
+    arr = patch(0.55, 0.45, 0.40)
+    naturel = render(arr, EditParams(presets=["Naturel"]))
+    legacy = render(arr, EditParams(presets=["Naturel", "Vintage"]))
+    np.testing.assert_allclose(legacy, naturel, atol=1e-6)

@@ -390,7 +390,9 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 - `core/adjustments.py` : `EditParams` (presets **empilables** + 12 curseurs),
   `render_with_profile`. Base Naturel (= v3) ou Noir & Blanc + looks créatifs.
   **Invariant** : Naturel + curseurs à 0 == v3 strict.
-- Looks : Cinématique, Clair & Aéré, Peau douce, Vintage, Golden Hour, Froid.
+- Presets (jeu validé client) : **Naturel** · **Noir & Blanc** · **Cinématique**.
+  Naturel répond à lui seul à toutes les exigences (couleurs naturelles, teint
+  réaliste, série cohérente) ; Cinématique = touche ciné empilable.
 - **Mes presets** (sauver/charger), **pipette balance des blancs**, réglage
   **global ou par image**, « Réinitialiser » = **photo originale**.
 - UI : **onglets en haut** (sidebar supprimée), compteurs retirés, bas **50/50**

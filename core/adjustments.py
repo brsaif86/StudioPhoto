@@ -4,9 +4,11 @@ core/adjustments.py — Moteur d'édition v3.0 (presets + corrections manuelles)
 Pur NumPy, sans dépendance UI. Deux niveaux :
 
 1. PRESET (look complet, indépendant) :
-       Naturel · Cinématique · Noir & Blanc · Vintage · Golden Hour · Froid
+       Naturel · Noir & Blanc · Cinématique
    « Naturel » = l'étalonnage adaptatif v3 (blancs neutres, anti-surexpo,
-   peau naturelle). Les autres presets sont des looks créatifs autonomes.
+   peau naturelle, série cohérente) : il répond à lui seul à TOUTES les
+   exigences client validées. « Cinématique » ajoute une touche ciné
+   par-dessus. « Noir & Blanc » = conversion N&B.
 
 2. CORRECTIONS MANUELLES (par-dessus le preset) :
        Exposition · Contraste · Hautes lumières · Ombres · Saturation
@@ -26,11 +28,9 @@ from core.grading import (
 )
 
 DEFAULT_PRESET = "Naturel"
-BASE_PRESETS = ["Naturel", "Noir & Blanc"]                 # correction de base
-LOOK_PRESETS = ["Cinématique", "Clair & Aéré", "Peau douce",
-                "Vintage", "Golden Hour", "Froid"]          # looks empilables
-PRESETS = ["Naturel", "Noir & Blanc", "Cinématique", "Clair & Aéré",
-           "Peau douce", "Vintage", "Golden Hour", "Froid"]
+BASE_PRESETS = ["Naturel", "Noir & Blanc"]    # bases exclusives (correction)
+LOOK_PRESETS = ["Cinématique"]                # touche créative empilable
+PRESETS = ["Naturel", "Noir & Blanc", "Cinématique"]
 
 _SLIDER_NAMES = ("exposure", "contrast", "highlights", "shadows",
                  "temperature", "tint", "vibrance", "saturation",
@@ -210,17 +210,25 @@ def _grain(arr, v, seed=None):   # grain argentique (bruit de luminance)
 
 
 def apply_manual(arr: np.ndarray, p: EditParams, grain_seed=None) -> np.ndarray:
-    """Applique les corrections manuelles dans l'ordre, en place."""
-    _exposure(arr, p.exposure)
-    _contrast(arr, p.contrast)
+    """Applique les corrections manuelles, en place, dans l'ORDRE PRO :
+
+    1. lumière (exposition, hautes lumières, ombres)
+    2. balance des blancs (température, teinte)
+    3. contraste
+    4. correction colorimétrique (vibrance, saturation = TSL)
+    5. contraste local (clarté)
+    6. touches finales (netteté, vignettage, grain)
+    """
+    _exposure(arr, p.exposure)          # 1. lumière
     _highlights(arr, p.highlights)
     _shadows(arr, p.shadows)
-    _temperature(arr, p.temperature)
+    _temperature(arr, p.temperature)    # 2. balance des blancs
     _tint(arr, p.tint)
-    _vibrance(arr, p.vibrance)
+    _contrast(arr, p.contrast)          # 3. contraste
+    _vibrance(arr, p.vibrance)          # 4. couleur (TSL)
     _saturation(arr, p.saturation)
-    _clarity(arr, p.clarity)
-    _sharpness(arr, p.sharpness)
+    _clarity(arr, p.clarity)            # 5. contraste local
+    _sharpness(arr, p.sharpness)        # 6. touches finales
     _vignette(arr, p.vignette)
     np.clip(arr, 0, 1, out=arr)
     _grain(arr, p.grain, seed=grain_seed)
@@ -355,8 +363,7 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
     - base « Naturel » : étalonnage v3, piloté par le profil dossier si fourni
       (rendu uniforme sur la série) ; sinon métriques par image.
     - base « Noir & Blanc » : conversion N&B.
-    - looks créatifs (Cinématique, Vintage, Golden Hour, Froid) appliqués dans
-      l'ordre, par-dessus la base.
+    - look créatif (Cinématique) appliqué par-dessus la base.
     - puis les 8 corrections manuelles.
     """
     # Aucun preset sélectionné → image ORIGINALE (aucun étalonnage), seules
