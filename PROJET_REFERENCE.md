@@ -417,6 +417,19 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
   `transpose(2,1,0,3)`) ; cache raté par image (lru_cache sur méthode →
   fonction module) ; LUT ignorée avec l'éditeur ; test de régression réécrit.
 
+### v3.3 — Classification hybride + LUT d'exemple + presets validés
+- **Classification hybride** (`HybridClassifier`, défaut) : CLIP classe tout, et
+  seules les images sous le `hybrid_threshold` (0.55) sont repassées à Ollama.
+  Replis gracieux (CLIP seul / Ollama seul). UI : sélecteur Moteur à 3 voies +
+  **liste déroulante des modèles vision** auto-détectés (`OllamaDetectWorker`)
+  + bouton Détecter + seuil hybride. Modèle par défaut `qwen3.5:0.8b` (léger).
+- **6 LUT `.cube` d'exemple** (mariage/cinéma) générées par
+  `tools/make_sample_luts.py` et embarquées dans `assets/luts/`.
+- **Presets réduits au jeu validé client** : Naturel · Noir & Blanc · Cinématique
+  (retrait des 5 autres looks). `apply_manual` suit l'**ordre pro** (lumière →
+  balance des blancs → contraste → couleur → local → finitions).
+- **Fix** : crash au démarrage de l'exe (`QComboBox`/`QSlider` non importés).
+
 ## 17. Versions
 
 | Version | Apport |
@@ -427,23 +440,25 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 | 2.0.0 | Aperçu intégré, peau naturelle, fixes packaging |
 | 3.0.0 | Éditeur interactif (presets empilables, curseurs, pipette, UI onglets) |
 | 3.2.0 | Moteur LUT 3D `.cube` + vibrance (revue & correctifs) |
+| 3.3.0 | Classification hybride CLIP+Ollama + LUT d'exemple + presets validés |
 
 ---
 
-## 18. État actuel (v3.2.0)
+## 18. État actuel (v3.3.0)
 
 - ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
-- ✅ `core/` pur testable seul ; **68 tests** au vert (régression pixel, LUT, éditeur)
-- ✅ Éditeur : presets empilables, 12 curseurs, mes presets, pipette BdB, LUT 3D
+- ✅ `core/` pur testable seul ; **79 tests** au vert (régression pixel, LUT, éditeur, hybride)
+- ✅ Éditeur : presets validés (Naturel/N&B/Cinématique), 12 curseurs (ordre pro), pipette, LUT 3D
+- ✅ Classification : moteur **Hybride** (CLIP+Ollama), Ollama seul ou CLIP ; liste de modèles vision auto-détectés
 - ✅ Workers adaptatifs (60 % cœurs physiques), série cohérente par défaut
 - ✅ CLI `grade` / `rename` / `classify` / `benchmark`
 - ✅ UI dark pro, onglets en haut, style 100 % QSS
-- ✅ Classification CLIP (onnxruntime, sans torch), modèle local exclu du git
-- ✅ LUT `.cube` (R/B corrigé, cache par worker), `assets/luts/Identity.cube`
-- ✅ Build Windows + macOS Silicon en CI ; build local 3.2.0 OK (modèle + LUT)
+- ✅ Ollama 100 % local (urllib stdlib, sortie JSON structurée), repli auto CLIP
+- ✅ LUT `.cube` (R/B corrigé, cache par worker) + 6 LUT d'exemple embarquées
+- ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 3.3.0 OK
 - ⚠ macOS Intel = build local (retiré de la CI)
-- ⚠ Exes CI sans modèle (gitignored) → classification inactive sans `assets/`
+- ⚠ Exes CI sans modèle CLIP (gitignored) ; Ollama requis pour l'analyse vision
 
 ---
 
-*Document de référence — mis à jour jusqu'à la v3.2.0.*
+*Document de référence — mis à jour jusqu'à la v3.3.0.*

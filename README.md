@@ -169,8 +169,10 @@ pytest tests/ -v
 - `test_renaming.py` — renommage (2 passes, dry-run, reprise, trous).
 - `test_classification.py` — preprocess, softmax/seuil, mapping, manifest,
   isolation des images corrompues.
+- `test_ollama_classify.py` — backend Ollama (mocké) : prompt, schéma JSON,
+  `resolve_model`, mode **hybride** (garde CLIP / adopte le LLM / repli).
 
-> 68 tests au total.
+> 79 tests au total.
 
 ---
 
@@ -302,7 +304,7 @@ version.py                 source unique de la version
 ui_entry.py                point d'entrée (freeze_support + QApplication + icône)
 assets/luts/               LUT .cube (Identity.cube fourni)
 assets/                    modèle CLIP (local, gitignored) + README
-tests/                     pytest (68)
+tests/                     pytest (79)
 ```
 
 ---
