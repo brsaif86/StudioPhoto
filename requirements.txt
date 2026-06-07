@@ -1,5 +1,17 @@
 Pillow>=10.0
 numpy>=1.26
 PySide6>=6.6
+psutil>=5.9
+opencv-python-headless>=4.9
+# onnxruntime — moteur d'inférence de la classification (sans torch).
+# Contraintes de wheels selon la plateforme :
+#   - Python 3.14+ : aucun wheel onnxruntime compatible Intel → ignoré
+#     (l'app build sans tri auto). Pour la classification : Python ≤ 3.13.
+#   - macOS Intel (x86_64) : Microsoft a abandonné les wheels Intel dans les
+#     versions récentes ; les derniers wheels universal2 (qui tournent sur Intel)
+#     vont jusqu'à la série 1.20.x → on plafonne là sur cette plateforme.
+#   - Windows / Linux / macOS Apple Silicon : dernière version.
+onnxruntime>=1.17; python_version < "3.14" and (sys_platform != "darwin" or platform_machine != "x86_64")
+onnxruntime>=1.17,<1.21; python_version < "3.14" and sys_platform == "darwin" and platform_machine == "x86_64"
 pyinstaller>=6.0
 pytest>=8.0

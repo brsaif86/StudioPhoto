@@ -18,6 +18,7 @@ from core.grading import (
     is_grayscale,
     process_image,
     collect_grade_tasks,
+    compute_folder_profile,
 )
 
 
@@ -107,6 +108,47 @@ def test_color_grade_deterministic():
 
 
 # ── apply_bw_grade ────────────────────────────────────────────────────────────
+
+def test_whites_stay_neutral():
+    """Une zone blanche/quasi-blanche ne doit prendre AUCUNE dominante (robe).
+
+    Garantit que l'étalonnage ne fait pas virer le blanc vers le bleu.
+    """
+    for level in (0.88, 0.92, 0.96):
+        white = np.full((48, 48, 3), level, dtype=np.float32)
+        m = analyze_image(white.copy())
+        out = np.asarray(apply_color_grade(white.copy(), m), dtype=np.float32) / 255.0
+        r, g, b = out[..., 0].mean(), out[..., 1].mean(), out[..., 2].mean()
+        # Écart entre canaux quasi nul → pas de teinte
+        assert abs(b - r) < 0.01, f"Cast bleu sur blanc {level}: B-R={b - r:+.4f}"
+        assert abs(r - g) < 0.01, f"Cast sur blanc {level}: R-G={r - g:+.4f}"
+
+
+def test_bright_image_not_overexposed():
+    """Une image déjà lumineuse ne doit pas être encore éclaircie (anti-surexpo)."""
+    bright = np.full((40, 40, 3), 0.93, dtype=np.float32)
+    m = analyze_image(bright.copy())
+    out = np.asarray(apply_color_grade(bright.copy(), m), dtype=np.float32) / 255.0
+    # La sortie ne doit pas dépasser l'entrée (pas d'ouverture des hautes lumières)
+    assert out.mean() <= 0.932, f"Image éclaircie : {out.mean():.3f} > 0.93"
+
+
+def test_coherent_profile_average():
+    """compute_folder_profile renvoie la moyenne des métriques d'une série."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = []
+        for i, lvl in enumerate((90, 140, 190)):   # sombre, moyen, clair
+            p = Path(tmp) / f"img_{i}.jpg"
+            make_image(lvl, lvl - 20, lvl - 40, size=(80, 80)).save(str(p), quality=95)
+            paths.append(p)
+        prof = compute_folder_profile(paths)
+        assert prof is not None
+        for k in ("mean_lum", "std_lum", "warm_cast", "highlight_ratio"):
+            assert k in prof
+        # mean_lum du profil ≈ moyenne des 3 niveaux (autour du niveau médian)
+        assert 0.3 < prof["mean_lum"] < 0.75
+
 
 def test_bw_grade_output_in_range():
     img = make_image(100, 100, 100)
