@@ -6,8 +6,9 @@ build/
 *.spec
 .pytest_cache/
 
-# Assets modèle CLIP (volumineux, générés via tools/export_clip_assets.py)
-assets/*.onnx
-assets/*.onnx.data
-assets/*.npy
+# Assets modèle CLIP/SigLIP (volumineux, générés via tools/export_clip_assets.py)
+assets/**/*.onnx
+assets/**/*.onnx.data
+assets/**/*.npy
 assets/clip_meta.json
+assets/_backup_*/

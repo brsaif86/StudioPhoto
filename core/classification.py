@@ -339,10 +339,19 @@ def _make_classifier(engine, assets_dir, ollama_model, ollama_url,
     Retourne un classifieur (`.labels` + `.classify_paths`) ou None.
     """
     if engine == "fewshot":
+        import numpy as _np
         from core.fewshot import load_model, FewShotClassifier
         model = load_model()
-        embedder = _build_clip(assets_dir, on_log)   # CLIP sert d'encodeur
+        embedder = _build_clip(assets_dir, on_log)   # CLIP/SigLIP sert d'encodeur
         if model and embedder:
+            # garde-fou : dimension d'embedding compatible avec le backbone actuel ?
+            probe = embedder.forward(_np.zeros(
+                (1, 3, embedder.input_size, embedder.input_size), _np.float32))
+            if probe.shape[1] != model["W"].shape[1]:
+                on_log(f"  ⚠ Modèle few-shot entraîné avec un autre backbone "
+                       f"(dim {model['W'].shape[1]} ≠ {probe.shape[1]}). "
+                       f"Ré-entraîne-le. Repli sur CLIP zero-shot.")
+                return embedder
             fs = FewShotClassifier.from_model(embedder, model)
             acc = model.get("acc", float("nan"))
             acc_txt = f", préc. {acc:.0%}" if acc == acc else ""

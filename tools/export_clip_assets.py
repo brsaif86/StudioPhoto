@@ -9,13 +9,14 @@ Produit dans assets/ :
     text_embeddings.npy     matrice [6, D] L2-normalisée (1 vecteur par classe)
     clip_meta.json          {input_size, mean, std, logit_scale, labels[]}
 
-Usage :
+Usage (SigLIP recommandé — meilleurs embeddings pour le few-shot) :
+    python tools/export_clip_assets.py --model ViT-B-16-SigLIP-256 --pretrained webli
+    python tools/export_clip_assets.py --model ViT-L-16-SigLIP-256  --pretrained webli
+    # ancien backbone CLIP (plus rapide, moins précis) :
     python tools/export_clip_assets.py --model ViT-B-32 --pretrained laion2b_s34b_b79k
-    python tools/export_clip_assets.py --model mobileclip_s0 --pretrained datacompdr
 
-Le code supporte deux backends :
-  - open_clip (par défaut, large couverture de modèles)
-  - mobileclip (package Apple) si --backend mobileclip
+La normalisation (mean/std) est lue automatiquement sur le modèle — SigLIP
+utilise [0.5,0.5,0.5], CLIP des valeurs différentes : ne pas hardcoder.
 """
 
 import argparse
@@ -44,21 +45,49 @@ def build_text_prompts():
     return out
 
 
+def _norm_from_transform(preprocess):
+    """Lit (mean, std) depuis la transform de validation open_clip.
+
+    CRITIQUE : SigLIP normalise en [0.5,0.5,0.5] (≠ CLIP). On lit la VRAIE
+    normalisation du modèle au lieu de la hardcoder, sinon les embeddings sont
+    corrompus.
+    """
+    try:
+        from torchvision.transforms import Normalize
+        for t in getattr(preprocess, "transforms", []):
+            if isinstance(t, Normalize):
+                return [float(x) for x in t.mean], [float(x) for x in t.std]
+    except Exception:
+        pass
+    return None
+
+
 def export_open_clip(model_name: str, pretrained: str):
     import torch
     import open_clip
 
-    model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrained)
+    model, _, preprocess = open_clip.create_model_and_transforms(
+        model_name, pretrained=pretrained)
     tokenizer = open_clip.get_tokenizer(model_name)
     model.eval()
 
-    # — taille d'entrée + normalisation —
+    is_siglip = "siglip" in model_name.lower()
+
+    # — taille d'entrée + normalisation RÉELLES du modèle —
     cfg = model.visual.image_size if hasattr(model.visual, "image_size") else 224
     input_size = cfg[0] if isinstance(cfg, (tuple, list)) else int(cfg)
-    # normalisation CLIP standard
-    mean = [0.48145466, 0.4578275, 0.40821073]
-    std  = [0.26862954, 0.26130258, 0.27577711]
+    norm = _norm_from_transform(preprocess)
+    if norm:
+        mean, std = norm
+    else:                                    # repli normalisation CLIP standard
+        mean = [0.48145466, 0.4578275, 0.40821073]
+        std  = [0.26862954, 0.26130258, 0.27577711]
     logit_scale = float(model.logit_scale.exp().detach().cpu().numpy())
+    # SigLIP : score sigmoïde avec biais (info pour le zero-shot ; le few-shot
+    # n'utilise que les embeddings image et s'en moque).
+    logit_bias = None
+    if getattr(model, "logit_bias", None) is not None:
+        logit_bias = float(model.logit_bias.detach().cpu().numpy())
 
     # — embeddings texte : encode, L2, moyenne par classe, re-L2 —
     prompts = build_text_prompts()
@@ -111,17 +140,22 @@ def export_open_clip(model_name: str, pretrained: str):
         "labels": LABELS,
         "model": f"{model_name}/{pretrained}",
         "dim": int(text_emb.shape[1]),
+        "scoring": "sigmoid" if is_siglip else "softmax",
     }
+    if logit_bias is not None:
+        meta["logit_bias"] = logit_bias
     (ASSETS / "clip_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(f"OK — assets écrits dans {ASSETS}")
-    print(f"  input_size={input_size}  dim={text_emb.shape[1]}  logit_scale={logit_scale:.2f}")
+    print(f"  modèle={model_name}/{pretrained}  ({'SigLIP' if is_siglip else 'CLIP'})")
+    print(f"  input_size={input_size}  dim={text_emb.shape[1]}  "
+          f"mean={[round(x,3) for x in mean]}  logit_scale={logit_scale:.2f}")
 
 
 def main():
     ap = argparse.ArgumentParser(description="Export CLIP assets (offline)")
     ap.add_argument("--backend", choices=["open_clip"], default="open_clip")
-    ap.add_argument("--model", default="ViT-B-32")
-    ap.add_argument("--pretrained", default="laion2b_s34b_b79k")
+    ap.add_argument("--model", default="ViT-B-16-SigLIP-256")
+    ap.add_argument("--pretrained", default="webli")
     args = ap.parse_args()
     export_open_clip(args.model, args.pretrained)
 

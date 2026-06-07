@@ -132,11 +132,18 @@ python cli.py benchmark C:\Photos --workers 6 8 --sample 20
 
 ```bat
 pip install -r requirements-dev.txt
-python tools\export_clip_assets.py --model ViT-B-32 --pretrained laion2b_s34b_b79k
+:: backbone recommandé : SigLIP (meilleurs embeddings, surtout pour le few-shot)
+python tools\export_clip_assets.py --model ViT-B-16-SigLIP-256 --pretrained webli
+:: ancien CLIP (plus rapide, moins précis) :
+:: python tools\export_clip_assets.py --model ViT-B-32 --pretrained laion2b_s34b_b79k
 ```
 
 Produit dans `assets/` (exclus du dépôt car volumineux) :
-`mobileclip_image.onnx` · `text_embeddings.npy` · `clip_meta.json`.
+`mobileclip_image.onnx` · `text_embeddings.npy` · `clip_meta.json`. La
+normalisation (mean/std) est lue automatiquement sur le modèle (SigLIP ≠ CLIP).
+
+> ⚠️ Après un changement de backbone, **ré-entraîne le modèle few-shot** (la
+> dimension d'embedding change ; l'app détecte l'incompatibilité et te le signale).
 
 Sans ces fichiers, l'onglet Classification affiche un avertissement ; le reste de
 l'app fonctionne normalement.
