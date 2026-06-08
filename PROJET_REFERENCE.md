@@ -423,6 +423,15 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
   `transpose(2,1,0,3)`) ; cache raté par image (lru_cache sur méthode →
   fonction module) ; LUT ignorée avec l'éditeur ; test de régression réécrit.
 
+### v4.0 — Backbone SigLIP-L (précision few-shot maximale)
+- Encodeur d'embeddings passé à **SigLIP ViT-L-16-256/webli** (1024-dim) — bien
+  plus discriminant que ViT-B/32 (512) ou SigLIP-B (768) sur les catégories
+  subjectives. `export_clip_assets.py` lit la normalisation réelle du modèle
+  (`[0.5,0.5,0.5]`), capture `logit_bias`/scoring sigmoïde.
+- Compromis : ONNX plus volumineux (~1+ Go) et embedding plus lent (~s/photo CPU),
+  mais one-shot par mariage → acceptable pour la précision. Garde-fou : modèle
+  few-shot d'un autre backbone détecté (dim ≠) → repli CLIP + invite à ré-entraîner.
+
 ### v3.4 — Classification few-shot (apprend tes tris)
 - `core/fewshot.py` : apprend des dossiers déjà triés (embeddings CLIP +
   régression logistique numpy) → rapide, 100 % local, bien plus fiable que le
@@ -456,24 +465,26 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 | 3.2.0 | Moteur LUT 3D `.cube` + vibrance (revue & correctifs) |
 | 3.3.0 | Classification hybride CLIP+Ollama + LUT d'exemple + presets validés |
 | 3.4.0 | Classification **few-shot** (apprend les dossiers triés) — rapide & fiable |
+| 4.0.0 | Backbone **SigLIP-L** (embeddings 1024-dim) — précision few-shot maximale |
 
 ---
 
-## 18. État actuel (v3.4.0)
+## 18. État actuel (v4.0.0)
 
 - ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
 - ✅ `core/` pur testable seul ; **85 tests** au vert (régression pixel, LUT, éditeur, hybride, few-shot)
 - ✅ Éditeur : presets validés (Naturel/N&B/Cinématique), 12 curseurs (ordre pro), pipette, LUT 3D
 - ✅ Classification : **4 moteurs** (Few-shot défaut, Hybride, Ollama, CLIP) ; few-shot apprend tes tris
+- ✅ Backbone embeddings **SigLIP ViT-L-16-256** (1024-dim, normalisation lue auto)
 - ✅ Workers adaptatifs (60 % cœurs physiques), série cohérente par défaut
 - ✅ CLI `grade` / `rename` / `classify` / `benchmark`
 - ✅ UI dark pro, onglets en haut, style 100 % QSS
 - ✅ Ollama 100 % local (urllib stdlib, sortie JSON structurée), repli auto CLIP
 - ✅ LUT `.cube` (R/B corrigé, cache par worker) + 6 LUT d'exemple embarquées
-- ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 3.4.0 OK
+- ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 4.0.0 OK
 - ⚠ macOS Intel = build local (retiré de la CI)
-- ⚠ Exes CI sans modèle CLIP (gitignored) ; Ollama requis pour l'analyse vision
+- ⚠ Exes CI sans modèle SigLIP (gitignored) ; à générer via export_clip_assets.py
 
 ---
 
-*Document de référence — mis à jour jusqu'à la v3.4.0.*
+*Document de référence — mis à jour jusqu'à la v4.0.0.*

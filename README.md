@@ -132,8 +132,9 @@ python cli.py benchmark C:\Photos --workers 6 8 --sample 20
 
 ```bat
 pip install -r requirements-dev.txt
-:: backbone recommandé : SigLIP (meilleurs embeddings, surtout pour le few-shot)
-python tools\export_clip_assets.py --model ViT-B-16-SigLIP-256 --pretrained webli
+:: backbone recommandé : SigLIP-L (meilleurs embeddings pour le few-shot)
+python tools\export_clip_assets.py --model ViT-L-16-SigLIP-256 --pretrained webli
+:: variante plus légère/rapide : ViT-B-16-SigLIP-256
 :: ancien CLIP (plus rapide, moins précis) :
 :: python tools\export_clip_assets.py --model ViT-B-32 --pretrained laion2b_s34b_b79k
 ```

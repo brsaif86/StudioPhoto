@@ -154,7 +154,7 @@ def export_open_clip(model_name: str, pretrained: str):
 def main():
     ap = argparse.ArgumentParser(description="Export CLIP assets (offline)")
     ap.add_argument("--backend", choices=["open_clip"], default="open_clip")
-    ap.add_argument("--model", default="ViT-B-16-SigLIP-256")
+    ap.add_argument("--model", default="ViT-L-16-SigLIP-256")
     ap.add_argument("--pretrained", default="webli")
     args = ap.parse_args()
     export_open_clip(args.model, args.pretrained)
