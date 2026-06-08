@@ -92,6 +92,12 @@ class EditParams:
         # rétro-compat : ancien champ unique « preset »
         if "presets" not in kw and "preset" in d:
             kw["presets"] = [d["preset"]]
+        # migration : sélection EXCLUSIVE — un seul preset à la fois. Les anciennes
+        # configs empilées (ex. Naturel + Cinématique) sont ramenées à leur base.
+        ps = kw.get("presets")
+        if ps and len(ps) > 1:
+            base = next((p for p in ps if p in BASE_PRESETS), None)
+            kw["presets"] = [base] if base else [ps[0]]
         return cls(**kw)
 
 

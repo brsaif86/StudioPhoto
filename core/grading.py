@@ -56,9 +56,10 @@ def analyze_image(arr: np.ndarray) -> dict:
 # Décale ici le rendu de BASE pour toutes les photos. Le dosage par photo/série
 # se fait avec les curseurs de l'éditeur (Température, Contraste, Vignettage,
 # Vibrance), qui s'empilent par-dessus.
-NATUREL_WARMTH   = 0.003   # touche chaude golden (atténuée sur la peau). 0 = neutre.
-NATUREL_CONTRAST = 0.35    # multiplicateur de la courbe de contraste. 1 = défaut.
-NATUREL_VIGNETTE = 0.05    # assombrissement des coins. 0 = aucun vignettage.
+NATUREL_WARMTH   = 0.013   # touche chaude golden (atténuée sur la peau). 0 = neutre.
+NATUREL_CONTRAST = 0.65    # multiplicateur de la courbe de contraste (ombres). 1 = défaut.
+NATUREL_VIGNETTE = 0.07    # assombrissement des coins. 0 = aucun vignettage.
+NATUREL_VIBRANCE = 0.28    # richesse des couleurs (verts/bleus/décor), peau protégée.
 
 
 # ── Étalonnage couleur adaptatif v3 ───────────────────────────────────────────
@@ -134,7 +135,7 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     mx = arr.max(axis=2, keepdims=True)
     mn = arr.min(axis=2, keepdims=True)
     sat = (mx - mn) / (mx + 1e-6)
-    vib = 0.22 * (1.0 - sat)                                   # + de boost si peu saturé
+    vib = NATUREL_VIBRANCE * (1.0 - sat)                       # + de boost si peu saturé
     vib *= (1.0 - orange_mask[:, :, np.newaxis] * 0.7)        # protège la peau
     arr[:] = lum_map + (arr - lum_map) * (1.0 + vib)
     np.clip(arr, 0, 1, out=arr)
