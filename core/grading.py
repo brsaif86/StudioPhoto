@@ -52,20 +52,15 @@ def analyze_image(arr: np.ndarray) -> dict:
     }
 
 
-# ── Réglages du look « Naturel » (calés sur la réf. Esposa/Mimon) ─────────────
-# Décale ici le rendu de BASE pour toutes les photos. Le dosage par photo/série
-# se fait avec les curseurs de l'éditeur (Température, Contraste, Vignettage,
-# Vibrance), qui s'empilent par-dessus.
-NATUREL_WARMTH   = 0.013   # touche chaude golden (atténuée sur la peau). 0 = neutre.
-NATUREL_CONTRAST = 0.65    # multiplicateur de la courbe de contraste (ombres). 1 = défaut.
-NATUREL_VIGNETTE = 0.07    # assombrissement des coins. 0 = aucun vignettage.
-NATUREL_VIBRANCE = 0.28    # richesse des couleurs (verts/bleus/décor), peau protégée.
-
-
-# ── Étalonnage couleur adaptatif v3 ───────────────────────────────────────────
+# ── Étalonnage couleur adaptatif (v3 original — rendu naturel préféré client) ──
 
 def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
-    """Étalonnage couleur ADAPTATIF (v3). arr normalisé 0..1, modifié en place."""
+    """Étalonnage naturel & cinématographique ADAPTATIF (v3 original).
+
+    Rendu doux/naturel : WB adaptative, shadow lift, S-curve douce (corps sans
+    durcir), correction peau, légère désaturation, neutralisation des blancs.
+    arr normalisé 0..1, modifié en place ; renvoie une image PIL.
+    """
     mean_lum        = m["mean_lum"]
     std_lum         = m["std_lum"]
     warm_cast       = m["warm_cast"]
@@ -79,72 +74,45 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
         wb_strength = 0.7
     if warm_cast < 0.03:
         wb_strength *= 0.5
-
     arr[:, :, 0] *= 1.0 - 0.03 * wb_strength
     arr[:, :, 1] *= 1.0 - 0.02 * wb_strength
     arr[:, :, 2] *= 1.0 + 0.01 * wb_strength
 
-    # 2. Shadow lift adaptatif — bridé sur les images déjà claires (anti-surexpo)
-    if mean_lum > 0.62 or highlight_ratio > 0.35:
-        lift = 0.0                      # image lumineuse : ne pas ouvrir davantage
-    elif mean_lum > 0.60:
-        lift = 0.006
+    # 2. Shadow lift adaptatif
+    if mean_lum > 0.60:
+        lift = 0.008
     elif mean_lum > 0.50:
         lift = 0.012
     else:
         lift = 0.018
-    if lift:
-        arr *= (1 - lift)
-        arr += lift
+    arr *= (1 - lift)
+    arr += lift
 
-    # 3. Contraste « riche » — S-curve autour d'un pivot bas : noirs plus
-    #    profonds + hautes lumières dégagées (séparation tonale façon mariage pro,
-    #    style Mimon/Esposa). Atténué sur les images sombres (anti-bouchage).
-    pivot = 0.42
-    contrast = (0.16 if std_lum > 0.20 else (0.22 if std_lum > 0.15 else 0.28)) * NATUREL_CONTRAST
-    if mean_lum < 0.42:
-        contrast *= 0.6
-    elif mean_lum > 0.60 or highlight_ratio > 0.25:
-        contrast *= 0.5
-    # Contraste UNIQUEMENT côté ombres (sous le pivot) → un peu de profondeur sans
-    # JAMAIS éclaircir les hautes lumières (rendu fidèle, robe/ciel non cramés).
-    d = arr - pivot
-    arr = pivot + d * np.where(d < 0.0, 1.0 + contrast, 1.0)
-    np.clip(arr, 0, 1, out=arr)
+    # 3. S-curve adaptative (sin) — ajoute du corps sans durcir
+    if std_lum > 0.20:
+        curve_strength = 0.02
+    elif std_lum > 0.15:
+        curve_strength = 0.03
+    else:
+        curve_strength = 0.04
+    arr += curve_strength * np.sin(np.pi * arr) * (1 - arr) * arr * 4
 
-    # 4. Correction peau adaptative
+    # 4. Correction peau — neutralise les zones orange
     r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
     orange_mask = (
         (r > 0.45) & (g > 0.30) & (b < 0.60) & (r > g) & (g > b)
     ).astype(np.float32)
-
     mask_img = Image.fromarray((orange_mask * 255).astype(np.uint8))
     mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=8))
     orange_mask = np.asarray(mask_img, dtype=np.float32) / 255.0
-
-    # Correction peau ADOUCIE : on retire moins de rouge et on ajoute très peu
-    # de bleu → la peau garde sa chaleur naturelle (évite le teint terne/gris).
     skin_strength = 0.5 if warm_cast > 0.08 else 1.0
-    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.034 * skin_strength
-    arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.006 * skin_strength
+    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.03 * skin_strength
+    arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.015 * skin_strength
 
-    # 5. Vibrance — booste la saturation des zones PEU saturées (verts, bleus,
-    #    décor) en PROTÉGEANT la peau (masque peau + zones déjà saturées). Donne
-    #    des couleurs riches et vivantes sans virer le teint (look Mimon/Esposa).
+    # 5. Désaturation légère (7 %)
     lum_map = (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2])[:, :, np.newaxis]
-    mx = arr.max(axis=2, keepdims=True)
-    mn = arr.min(axis=2, keepdims=True)
-    sat = (mx - mn) / (mx + 1e-6)
-    vib = NATUREL_VIBRANCE * (1.0 - sat)                       # + de boost si peu saturé
-    vib *= (1.0 - orange_mask[:, :, np.newaxis] * 0.7)        # protège la peau
-    arr[:] = lum_map + (arr - lum_map) * (1.0 + vib)
-    np.clip(arr, 0, 1, out=arr)
-
-    # 5b. Touche chaude « golden » très légère (peau/midtones). Les blancs sont
-    #     re-neutralisés à l'étape 7 → chaleur sans jaunir la robe.
-    wr = NATUREL_WARMTH * (1.0 - orange_mask * 0.85)    # quasi pas de chaleur sur la peau
-    arr[:, :, 0] *= 1.0 + wr
-    arr[:, :, 2] *= 1.0 - wr * 0.83
+    arr *= 0.93
+    arr += lum_map * 0.07
     np.clip(arr, 0, 1, out=arr)
 
     # 6. Gamma lift adaptatif
@@ -153,40 +121,39 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     elif mean_lum < 0.55:
         arr **= 0.99
 
-    # (Aucun traitement des photos « cramées » : Naturel reste fidèle. Les rares
-    #  photos surexposées se corrigent au curseur « Hautes lumières − » par photo.)
-
-    # 7. Neutralisation des blancs — protection anti-dominante (bleu/couleur)
-    #    Les pixels très clairs (robe blanche, ciel) sont ramenés fortement vers
-    #    le gris neutre afin qu'ils ne prennent AUCUNE teinte. Le poids monte
-    #    progressivement avec la luminance (rampe 0.72 → 0.92) puis est lissé
-    #    pour éviter tout liseré sur les bords.
-    lum_w = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
-    whiteness = np.clip((lum_w - 0.72) / 0.20, 0.0, 1.0)
-
-    whiteness = np.asarray(
-        Image.fromarray((whiteness * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(4)),
+    # 7. Neutralisation des blancs adaptative (douce sur studio blanc)
+    nw_strength = 0.15 if highlight_ratio > 0.25 else 0.30
+    near_white = (
+        (arr[:, :, 0] > 0.75) & (arr[:, :, 1] > 0.75) & (arr[:, :, 2] > 0.70)
+    ).astype(np.float32)
+    nw_smooth = np.asarray(
+        Image.fromarray((near_white * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(6)),
         dtype=np.float32,
     ) / 255.0
-
-    # Neutralisation forte sur les blancs (jusqu'à 0.92 → quasi R=G=B),
-    # adoucie si l'image comporte déjà beaucoup de hautes lumières.
-    max_neutral = 0.85 if highlight_ratio > 0.25 else 0.92
     avg = (arr[:, :, 0] + arr[:, :, 1] + arr[:, :, 2]) / 3.0
-    factor = whiteness * max_neutral
+    factor = nw_smooth * nw_strength
     for c in range(3):
         arr[:, :, c] = arr[:, :, c] * (1 - factor) + avg * factor
 
-    # 8. Vignettage léger — profondeur / dimension (subtil, façon portrait pro).
-    h, w = arr.shape[:2]
-    yy, xx = np.ogrid[:h, :w]
-    cy, cx = (h - 1) / 2.0, (w - 1) / 2.0
-    d = np.sqrt(((xx - cx) / (cx + 1e-6)) ** 2 + ((yy - cy) / (cy + 1e-6)) ** 2)
-    vmask = (np.clip(d / 1.41, 0.0, 1.0) ** 2)[:, :, np.newaxis].astype(np.float32)
-    arr *= (1.0 - NATUREL_VIGNETTE * vmask)
-
     np.clip(arr, 0, 1, out=arr)
     return Image.fromarray((arr * 255).astype(np.uint8))
+
+
+def apply_color_grade_warm(arr: np.ndarray, m: dict) -> Image.Image:
+    """« Naturel 2 » : étalonnage v3 PUIS touche chaude dorée (peau protégée)."""
+    img = apply_color_grade(arr, m)                      # v3 (couleurs naturelles)
+    a = np.asarray(img, dtype=np.float32) / 255.0
+    r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+    skin = ((r > 0.45) & (g > 0.30) & (b < 0.60) & (r > g) & (g > b)).astype(np.float32)
+    skin = np.asarray(
+        Image.fromarray((skin * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(8)),
+        dtype=np.float32,
+    ) / 255.0
+    w = 0.018 * (1.0 - skin * 0.7)                       # chaleur atténuée sur la peau
+    a[:, :, 0] *= 1.0 + w
+    a[:, :, 2] *= 1.0 - w * 0.83
+    np.clip(a, 0, 1, out=a)
+    return Image.fromarray((a * 255).astype(np.uint8))
 
 
 # ── Étalonnage N&B ────────────────────────────────────────────────────────────

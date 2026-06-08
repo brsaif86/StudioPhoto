@@ -24,13 +24,14 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 from core.grading import (
-    analyze_image, apply_color_grade, apply_bw_grade, is_grayscale,
+    analyze_image, apply_color_grade, apply_color_grade_warm, apply_bw_grade,
+    is_grayscale,
 )
 
 DEFAULT_PRESET = "Naturel"
-BASE_PRESETS = ["Naturel", "Noir & Blanc"]    # bases exclusives (correction)
-LOOK_PRESETS = ["Cinématique"]                # touche créative empilable
-PRESETS = ["Naturel", "Noir & Blanc", "Cinématique"]
+BASE_PRESETS = ["Naturel", "Naturel 2", "Noir & Blanc"]   # bases exclusives
+LOOK_PRESETS = ["Cinématique"]                            # touche créative
+PRESETS = ["Naturel", "Naturel 2", "Noir & Blanc", "Cinématique"]
 
 _SLIDER_NAMES = ("exposure", "contrast", "highlights", "shadows",
                  "temperature", "tint", "vibrance", "saturation",
@@ -68,7 +69,10 @@ class EditParams:
         return all(getattr(self, n) == 0.0 for n in _SLIDER_NAMES)
 
     def base(self) -> str:
-        return "Noir & Blanc" if "Noir & Blanc" in self.presets else "Naturel"
+        for b in BASE_PRESETS:
+            if b in self.presets:
+                return b
+        return DEFAULT_PRESET
 
     def looks(self) -> list:
         return [p for p in LOOK_PRESETS if p in self.presets]
@@ -388,7 +392,8 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
             out = np.asarray(apply_bw_grade(arr01.copy()), dtype=np.float32) / 255.0
         else:
             m = profile if profile else analyze_image(arr01)
-            out = np.asarray(apply_color_grade(arr01.copy(), m), dtype=np.float32) / 255.0
+            grade = apply_color_grade_warm if base == "Naturel 2" else apply_color_grade
+            out = np.asarray(grade(arr01.copy(), m), dtype=np.float32) / 255.0
 
     for look in params.looks():
         out = _LOOKS[look](out)

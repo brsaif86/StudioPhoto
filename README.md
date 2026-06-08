@@ -6,8 +6,8 @@ Application photo autonome (Windows / macOS) — interface à **onglets en haut*
 1. **Étalonnage** — éditeur interactif avec aperçu avant/après intégré :
    - base adaptative v3 (couleur + N&B, anti-surexposition, blancs neutres, peau
      naturelle) + **mode série cohérente** (rendu uniforme par dossier) ;
-   - **3 presets exclusifs** (un seul à la fois) : Naturel (validé client),
-     Noir & Blanc, Cinématique ;
+   - **4 presets exclusifs** (un seul à la fois) : Naturel (étalonnage v3 naturel),
+     Naturel 2 (v3 + touche chaude dorée), Noir & Blanc, Cinématique ;
    - **corrections manuelles** (12 curseurs) ; **presets personnalisés** ;
      **pipette balance des blancs** ;
    - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
@@ -53,7 +53,7 @@ Dossiers + Options + LANCER/ANNULER à gauche, console à droite.
 
 | Bloc | Détail |
 |------|--------|
-| **Presets** | 3 presets **mutuellement exclusifs** (un seul à la fois, rendu cohérent) : **Naturel** (= v3 validé client), **Noir & Blanc**, **Cinématique**. Re-cliquer le preset actif → photo originale. |
+| **Presets** | 4 presets **mutuellement exclusifs** (un seul à la fois) : **Naturel** (étalonnage v3 naturel/doux), **Naturel 2** (v3 + touche chaude dorée, peau protégée), **Noir & Blanc**, **Cinématique**. Re-cliquer le preset actif → photo originale. |
 | **Mes presets** | Sauver / appliquer / supprimer ses propres réglages (persistés en config). |
 | **Corrections manuelles** | 12 curseurs bipolaires (0 = neutre) : Exposition, Contraste, Hautes lumières, Ombres, Température, Teinte, Vibrance, Saturation, Clarté, Netteté, Vignettage, Grain. |
 | **Pipette BdB** | Clic sur une zone neutre de l'aperçu → corrige automatiquement la balance des blancs (température + teinte). |

@@ -467,7 +467,7 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 
 - ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
 - ✅ `core/` pur testable seul ; **60 tests** au vert (régression pixel, éditeur, few-shot)
-- ✅ Éditeur : **3 presets exclusifs** (Naturel/N&B/Cinématique, un seul à la fois), 12 curseurs (ordre pro), pipette
+- ✅ Éditeur : **4 presets exclusifs** (Naturel v3, Naturel 2 chaud, N&B, Cinématique), 12 curseurs, pipette
 - ✅ Classification : **2 moteurs** — Few-shot (défaut, apprend tes tris) + zero-shot SigLIP (repli)
 - ✅ Backbone embeddings **SigLIP ViT-B-16-256** (768-dim, léger/rapide, normalisation lue auto)
 - ✅ Few-shot multi-dossiers : cumule plusieurs mariages, normalise les noms, ignore les sélections
