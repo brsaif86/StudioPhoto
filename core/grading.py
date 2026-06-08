@@ -56,9 +56,9 @@ def analyze_image(arr: np.ndarray) -> dict:
 # Décale ici le rendu de BASE pour toutes les photos. Le dosage par photo/série
 # se fait avec les curseurs de l'éditeur (Température, Contraste, Vignettage,
 # Vibrance), qui s'empilent par-dessus.
-NATUREL_WARMTH   = 0.005   # touche chaude golden (atténuée sur la peau). 0 = neutre.
-NATUREL_CONTRAST = 0.6     # multiplicateur de la courbe de contraste. 1 = défaut.
-NATUREL_VIGNETTE = 0.12    # assombrissement des coins. 0 = aucun vignettage.
+NATUREL_WARMTH   = 0.003   # touche chaude golden (atténuée sur la peau). 0 = neutre.
+NATUREL_CONTRAST = 0.35    # multiplicateur de la courbe de contraste. 1 = défaut.
+NATUREL_VIGNETTE = 0.05    # assombrissement des coins. 0 = aucun vignettage.
 
 
 # ── Étalonnage couleur adaptatif v3 ───────────────────────────────────────────
@@ -82,19 +82,6 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     arr[:, :, 0] *= 1.0 - 0.03 * wb_strength
     arr[:, :, 1] *= 1.0 - 0.02 * wb_strength
     arr[:, :, 2] *= 1.0 + 0.01 * wb_strength
-
-    # 1b. Récupération d'exposition — sur les images SUREXPOSÉES (visages/robe
-    #     lavés), on redescend les TONS CLAIRS pour ramener le détail encore
-    #     présent. Pondéré par la luminance → les ombres ne bougent pas. Le blanc
-    #     PUR déjà clippé (sparklers, flash trop fort) reste irrécupérable.
-    if highlight_ratio > 0.22 or mean_lum > 0.64:
-        amt = float(np.clip((highlight_ratio - 0.18) * 0.7
-                            + max(0.0, mean_lum - 0.60) * 0.6, 0.0, 0.20))
-        if amt > 0:
-            lum0 = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
-            w = np.clip((lum0 - 0.45) / 0.55, 0.0, 1.0)[:, :, np.newaxis]
-            arr *= (1.0 - amt * w)
-            np.clip(arr, 0, 1, out=arr)
 
     # 2. Shadow lift adaptatif — bridé sur les images déjà claires (anti-surexpo)
     if mean_lum > 0.62 or highlight_ratio > 0.35:
@@ -136,7 +123,7 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     # Correction peau ADOUCIE : on retire moins de rouge et on ajoute très peu
     # de bleu → la peau garde sa chaleur naturelle (évite le teint terne/gris).
     skin_strength = 0.5 if warm_cast > 0.08 else 1.0
-    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.028 * skin_strength
+    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.034 * skin_strength
     arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.006 * skin_strength
 
     # 5. Vibrance — booste la saturation des zones PEU saturées (verts, bleus,
@@ -153,7 +140,7 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
 
     # 5b. Touche chaude « golden » très légère (peau/midtones). Les blancs sont
     #     re-neutralisés à l'étape 7 → chaleur sans jaunir la robe.
-    wr = NATUREL_WARMTH * (1.0 - orange_mask * 0.75)    # quasi pas de chaleur sur la peau
+    wr = NATUREL_WARMTH * (1.0 - orange_mask * 0.85)    # quasi pas de chaleur sur la peau
     arr[:, :, 0] *= 1.0 + wr
     arr[:, :, 2] *= 1.0 - wr * 0.83
     np.clip(arr, 0, 1, out=arr)
