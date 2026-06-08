@@ -83,6 +83,19 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     arr[:, :, 1] *= 1.0 - 0.02 * wb_strength
     arr[:, :, 2] *= 1.0 + 0.01 * wb_strength
 
+    # 1b. Récupération d'exposition — sur les images SUREXPOSÉES (visages/robe
+    #     lavés), on redescend les TONS CLAIRS pour ramener le détail encore
+    #     présent. Pondéré par la luminance → les ombres ne bougent pas. Le blanc
+    #     PUR déjà clippé (sparklers, flash trop fort) reste irrécupérable.
+    if highlight_ratio > 0.22 or mean_lum > 0.64:
+        amt = float(np.clip((highlight_ratio - 0.18) * 0.7
+                            + max(0.0, mean_lum - 0.60) * 0.6, 0.0, 0.20))
+        if amt > 0:
+            lum0 = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
+            w = np.clip((lum0 - 0.45) / 0.55, 0.0, 1.0)[:, :, np.newaxis]
+            arr *= (1.0 - amt * w)
+            np.clip(arr, 0, 1, out=arr)
+
     # 2. Shadow lift adaptatif — bridé sur les images déjà claires (anti-surexpo)
     if mean_lum > 0.62 or highlight_ratio > 0.35:
         lift = 0.0                      # image lumineuse : ne pas ouvrir davantage
@@ -103,6 +116,8 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     contrast = (0.16 if std_lum > 0.20 else (0.22 if std_lum > 0.15 else 0.28)) * NATUREL_CONTRAST
     if mean_lum < 0.42:
         contrast *= 0.6
+    elif mean_lum > 0.60 or highlight_ratio > 0.25:
+        contrast *= 0.5      # image déjà chargée en hautes lumières → ne pas les pousser
     arr -= pivot
     arr *= (1.0 + contrast)
     arr += pivot
