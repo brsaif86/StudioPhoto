@@ -151,14 +151,8 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     elif mean_lum < 0.55:
         arr **= 0.99
 
-    # 6b. Anti-surexposition — rolloff doux des très hautes lumières
-    #     Récupère du détail dans les blancs « cramés » sans grisailler la robe :
-    #     seuls les pixels au-dessus de l'épaule (0.86) sont compressés, et
-    #     d'autant plus que l'image est globalement claire.
-    roll = 0.50 if (mean_lum > 0.62 or highlight_ratio > 0.30) else 0.22
-    shoulder = 0.86
-    over = np.clip((arr - shoulder) / (1.0 - shoulder), 0.0, 1.0)
-    arr -= over * (arr - shoulder) * roll
+    # (Aucun traitement des photos « cramées » : Naturel reste fidèle. Les rares
+    #  photos surexposées se corrigent au curseur « Hautes lumières − » par photo.)
 
     # 7. Neutralisation des blancs — protection anti-dominante (bleu/couleur)
     #    Les pixels très clairs (robe blanche, ciel) sont ramenés fortement vers
