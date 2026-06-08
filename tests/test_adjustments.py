@@ -36,7 +36,7 @@ def test_editparams_is_neutral():
 # ── Sérialisation ─────────────────────────────────────────────────────────────
 
 def test_editparams_roundtrip():
-    p = EditParams(presets=["Naturel", "Cinématique"], exposure=15, grain=20)
+    p = EditParams(presets=["Cinématique"], exposure=15, grain=20)   # un seul preset
     d = p.to_dict()
     p2 = EditParams.from_dict(d)
     assert p2 == p
@@ -45,6 +45,13 @@ def test_editparams_roundtrip():
     assert EditParams.from_dict({"exposure": 5, "inconnu": 9}).exposure == 5
     # rétro-compat ancien champ « preset »
     assert EditParams.from_dict({"preset": "Vintage"}).presets == ["Vintage"]
+
+
+def test_legacy_stacked_presets_collapse_to_one():
+    """Migration : une ancienne config empilée → un seul preset (la base)."""
+    assert EditParams.from_dict({"presets": ["Naturel", "Cinématique"]}).presets == ["Naturel"]
+    assert EditParams.from_dict({"presets": ["Noir & Blanc", "Cinématique"]}).presets == ["Noir & Blanc"]
+    assert EditParams.from_dict({"presets": ["Cinématique"]}).presets == ["Cinématique"]
 
 
 # ── Presets combinés ──────────────────────────────────────────────────────────
