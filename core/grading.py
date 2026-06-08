@@ -104,10 +104,11 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     if mean_lum < 0.42:
         contrast *= 0.6
     elif mean_lum > 0.60 or highlight_ratio > 0.25:
-        contrast *= 0.5      # image déjà chargée en hautes lumières → ne pas les pousser
-    arr -= pivot
-    arr *= (1.0 + contrast)
-    arr += pivot
+        contrast *= 0.5
+    # Contraste UNIQUEMENT côté ombres (sous le pivot) → un peu de profondeur sans
+    # JAMAIS éclaircir les hautes lumières (rendu fidèle, robe/ciel non cramés).
+    d = arr - pivot
+    arr = pivot + d * np.where(d < 0.0, 1.0 + contrast, 1.0)
     np.clip(arr, 0, 1, out=arr)
 
     # 4. Correction peau adaptative
