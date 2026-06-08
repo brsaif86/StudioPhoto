@@ -87,9 +87,17 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
         arr *= (1 - lift)
         arr += lift
 
-    # 3. S-curve adaptative
-    curve_strength = 0.02 if std_lum > 0.20 else (0.03 if std_lum > 0.15 else 0.04)
-    arr += curve_strength * np.sin(np.pi * arr) * (1 - arr) * arr * 4
+    # 3. Contraste « riche » — S-curve autour d'un pivot bas : noirs plus
+    #    profonds + hautes lumières dégagées (séparation tonale façon mariage pro,
+    #    style Mimon/Esposa). Atténué sur les images sombres (anti-bouchage).
+    pivot = 0.42
+    contrast = 0.16 if std_lum > 0.20 else (0.22 if std_lum > 0.15 else 0.28)
+    if mean_lum < 0.42:
+        contrast *= 0.6
+    arr -= pivot
+    arr *= (1.0 + contrast)
+    arr += pivot
+    np.clip(arr, 0, 1, out=arr)
 
     # 4. Correction peau adaptative
     r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
@@ -107,11 +115,22 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.015 * skin_strength
     arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.005 * skin_strength
 
-    # 5. Désaturation TRÈS légère (réduite) — garde des couleurs vivantes,
-    #    pas fades. On désature seulement 3 % au lieu de 7 %.
+    # 5. Vibrance — booste la saturation des zones PEU saturées (verts, bleus,
+    #    décor) en PROTÉGEANT la peau (masque peau + zones déjà saturées). Donne
+    #    des couleurs riches et vivantes sans virer le teint (look Mimon/Esposa).
     lum_map = (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2])[:, :, np.newaxis]
-    arr *= 0.97
-    arr += lum_map * 0.03
+    mx = arr.max(axis=2, keepdims=True)
+    mn = arr.min(axis=2, keepdims=True)
+    sat = (mx - mn) / (mx + 1e-6)
+    vib = 0.22 * (1.0 - sat)                                   # + de boost si peu saturé
+    vib *= (1.0 - orange_mask[:, :, np.newaxis] * 0.7)        # protège la peau
+    arr[:] = lum_map + (arr - lum_map) * (1.0 + vib)
+    np.clip(arr, 0, 1, out=arr)
+
+    # 5b. Touche chaude « golden » très légère (peau/midtones). Les blancs sont
+    #     re-neutralisés à l'étape 7 → chaleur sans jaunir la robe.
+    arr[:, :, 0] *= 1.012
+    arr[:, :, 2] *= 0.990
     np.clip(arr, 0, 1, out=arr)
 
     # 6. Gamma lift adaptatif
@@ -149,6 +168,14 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     factor = whiteness * max_neutral
     for c in range(3):
         arr[:, :, c] = arr[:, :, c] * (1 - factor) + avg * factor
+
+    # 8. Vignettage léger — profondeur / dimension (subtil, façon portrait pro).
+    h, w = arr.shape[:2]
+    yy, xx = np.ogrid[:h, :w]
+    cy, cx = (h - 1) / 2.0, (w - 1) / 2.0
+    d = np.sqrt(((xx - cx) / (cx + 1e-6)) ** 2 + ((yy - cy) / (cy + 1e-6)) ** 2)
+    vmask = (np.clip(d / 1.41, 0.0, 1.0) ** 2)[:, :, np.newaxis].astype(np.float32)
+    arr *= (1.0 - 0.12 * vmask)
 
     np.clip(arr, 0, 1, out=arr)
     return Image.fromarray((arr * 255).astype(np.uint8))
