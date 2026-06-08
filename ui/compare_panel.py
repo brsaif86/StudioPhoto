@@ -29,23 +29,16 @@ class PreviewWorker(QThread):
     done  = Signal(object, object, str, dict)   # (orig_px, graded_px, mode, metrics)
     error = Signal(str)
 
-    def __init__(self, path, profile: dict = None, edit=None, lut_dir=None, lut_name=None, lut_strength=1.0, vibrance=0.0, parent=None):
+    def __init__(self, path, profile: dict = None, edit=None, parent=None):
         super().__init__(parent)
         self._path = path
         self._profile = profile
         self._edit = edit
-        self._lut_dir = lut_dir
-        self._lut_name = lut_name
-        self._lut_strength = lut_strength
-        self._vibrance = vibrance
 
     def run(self) -> None:
         try:
-            from core.lut_engine import LutEngine
-            engine = LutEngine(self._lut_dir) if self._lut_dir else None
             original, graded, mode, metrics = grade_preview(
                 self._path, profile=self._profile, edit=self._edit,
-                lut_engine=engine, lut_name=self._lut_name, lut_strength=self._lut_strength, vibrance=self._vibrance
             )
             self.done.emit(
                 _pil_to_qpixmap(original), _pil_to_qpixmap(graded), mode, metrics
@@ -74,23 +67,16 @@ class ExportWorker(QThread):
     """Enregistre l'image courante en plein format avec les réglages actifs."""
     done = Signal(bool, str)   # (succès, message)
 
-    def __init__(self, src, dst, profile, edit, quality, lut_dir=None, lut_name=None, lut_strength=1.0, vibrance=0.0, parent=None):
+    def __init__(self, src, dst, profile, edit, quality, parent=None):
         super().__init__(parent)
         self._src, self._dst = src, dst
         self._profile, self._edit, self._quality = profile, edit, quality
-        self._lut_dir = lut_dir
-        self._lut_name = lut_name
-        self._lut_strength = lut_strength
-        self._vibrance = vibrance
 
     def run(self) -> None:
         from core.grading import process_image
-        from core.lut_engine import LutEngine
-        engine = LutEngine(self._lut_dir) if self._lut_dir else None
         msg = process_image(
             Path(self._src), Path(self._dst), skip_existing=False,
             quality=self._quality, profile=self._profile, edit=self._edit,
-            lut_engine=engine, lut_name=self._lut_name, lut_strength=self._lut_strength, vibrance=self._vibrance,
         )
         self.done.emit("✗" not in msg, msg)
 

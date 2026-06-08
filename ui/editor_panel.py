@@ -199,20 +199,10 @@ class EditorPanel(QWidget):
     def _on_preset(self, name: str) -> None:
         if self._loading:
             return
+        # Sélection EXCLUSIVE : un seul preset à la fois (rendu cohérent, pro).
+        # Re-cliquer le preset actif le désélectionne → photo originale.
         tgt = self._target()
-        presets = list(tgt.presets)
-        if name in BASE_PRESETS:
-            # base exclusive : remplace l'ancienne base, garde les looks
-            presets = [name] + [p for p in presets if p in LOOK_PRESETS]
-        else:
-            # look additif : on/off
-            if name in presets:
-                presets.remove(name)
-            else:
-                presets.append(name)
-            if not any(b in presets for b in BASE_PRESETS):
-                presets.insert(0, DEFAULT_PRESET)   # toujours une base
-        tgt.presets = presets
+        tgt.presets = [] if list(tgt.presets) == [name] else [name]
         self._sync_ui()
         self.changed.emit()
 

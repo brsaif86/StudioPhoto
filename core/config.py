@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 from core.grading import default_workers
-from core.lut_engine import default_lut_dir
 
 _CONFIG_PATH = Path.home() / "AppData" / "Roaming" / "StudioPhoto" / "settings.json"
 
@@ -34,10 +33,6 @@ def _defaults() -> dict:
         "classify_recursive":  True,
         "classify_engine":     "fewshot",  # "fewshot" | "clip"
         "classify_train_dir":  "",         # dossier(s) d'exemples triés (few-shot)
-        "lut_dir":             str(default_lut_dir()),
-        "lut_name":            None,
-        "lut_strength":        0.85,
-        "vibrance":            0.10,
     }
 
 

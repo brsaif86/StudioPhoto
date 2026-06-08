@@ -6,10 +6,10 @@ Application photo autonome (Windows / macOS) — interface à **onglets en haut*
 1. **Étalonnage** — éditeur interactif avec aperçu avant/après intégré :
    - base adaptative v3 (couleur + N&B, anti-surexposition, blancs neutres, peau
      naturelle) + **mode série cohérente** (rendu uniforme par dossier) ;
-   - **presets** : Naturel (étalonnage validé client, répond à toutes les
-     exigences), Noir & Blanc, et touche **Cinématique** empilable ;
+   - **3 presets exclusifs** (un seul à la fois) : Naturel (validé client),
+     Noir & Blanc, Cinématique ;
    - **corrections manuelles** (12 curseurs) ; **presets personnalisés** ;
-     **pipette balance des blancs** ; **LUT 3D `.cube`** + vibrance ;
+     **pipette balance des blancs** ;
    - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
 2. **Classification / Tri auto** — catégories de mariage + « À revoir », au choix :
    - **Few-shot** (recommandé) — **apprend de tes dossiers déjà triés** (embeddings
@@ -53,11 +53,10 @@ Dossiers + Options + LANCER/ANNULER à gauche, console à droite.
 
 | Bloc | Détail |
 |------|--------|
-| **Presets automatiques** | 1 base (Naturel = v3 validé client, ou Noir & Blanc) + touche **Cinématique** empilable. Ex. *Naturel + Cinématique* = couleurs naturelles avec une touche ciné, cohérentes sur toute la série. |
+| **Presets** | 3 presets **mutuellement exclusifs** (un seul à la fois, rendu cohérent) : **Naturel** (= v3 validé client), **Noir & Blanc**, **Cinématique**. Re-cliquer le preset actif → photo originale. |
 | **Mes presets** | Sauver / appliquer / supprimer ses propres réglages (persistés en config). |
 | **Corrections manuelles** | 12 curseurs bipolaires (0 = neutre) : Exposition, Contraste, Hautes lumières, Ombres, Température, Teinte, Vibrance, Saturation, Clarté, Netteté, Vignettage, Grain. |
 | **Pipette BdB** | Clic sur une zone neutre de l'aperçu → corrige automatiquement la balance des blancs (température + teinte). |
-| **Rendu & LUT** | Sélection d'une LUT 3D `.cube` (dossier `assets/luts/`), intensité 0–100 %, vibrance. |
 | **Portée** | « Appliquer à toute la série » (global) ou réglage **par image** (surcharge). |
 | **Réinitialiser** | Revient à la **photo originale** (aucun preset, curseurs à 0). |
 | **Enregistrer les modifications** | Exporte l'image courante avec les réglages actifs. |
@@ -65,13 +64,6 @@ Dossiers + Options + LANCER/ANNULER à gauche, console à droite.
 Invariant : **Naturel seul + curseurs à 0 = étalonnage v3 strict** (le lot par
 défaut ne change pas). L'aperçu reflète exactement le rendu du lot (profil de
 série inclus).
-
-### LUT 3D `.cube`
-
-Moteur `core/lut_engine.py` : lecture `.cube` standard, interpolation trilinéaire
-vectorisée (NumPy), cache par `(dossier, nom)`. Dépose tes `.cube` dans
-`assets/luts/`. Pipeline : étalonnage → **LUT** → vibrance. `assets/luts/Identity.cube`
-fourni par défaut.
 
 ---
 
@@ -166,8 +158,6 @@ pytest tests/ -v
   blancs neutres, anti-surexposition, profil série).
 - `test_adjustments.py` — éditeur : invariant *Naturel+0 = v3*, presets
   empilés, corrections manuelles, sérialisation, « Original ».
-- `test_lut_engine.py` — LUT `.cube` (chargement, ordre R/G/B, interpolation,
-  cache, blend d'intensité, vibrance, non-régression sans LUT).
 - `test_renaming.py` — renommage (2 passes, dry-run, reprise, trous).
 - `test_classification.py` — preprocess, softmax/seuil, mapping, manifest,
   isolation des images corrompues.
@@ -175,7 +165,7 @@ pytest tests/ -v
   depuis dossiers triés (multi-dossiers, normalisation), sauvegarde/chargement,
   inférence, gestion d'erreur.
 
-> 70 tests au total.
+> 60 tests au total.
 
 ---
 
@@ -278,10 +268,8 @@ Sur tag, une **Release GitHub** est créée avec les artefacts (`if: always()`).
 ```
 core/                      moteur pur, AUCUNE dépendance UI
   grading.py               algo v3 + anti-surexpo + profil série + default_workers()
-  adjustments.py           éditeur : EditParams, presets/looks, corrections
-                           manuelles, render_with_profile (+ LUT/vibrance)
-  lut_engine.py            LUT 3D .cube (chargement, interp. trilinéaire, cache,
-                           vibrance) — numpy + cv2
+  adjustments.py           éditeur : EditParams, presets exclusifs, corrections
+                           manuelles, render_with_profile
   renaming.py              rename_folder, collect_rename_targets
   classification.py        SigLIP (preprocess cv2, Classifier onnxruntime,
                            run_classify_batch + dispatcher moteur, manifest, tri)
@@ -292,7 +280,7 @@ core/                      moteur pur, AUCUNE dépendance UI
 ui/                        PySide6 — style 100% via ui/style.py (QSS), zéro inline
   app.py                   MainWindow (onglets en haut, bas 50/50, console)
   grade_panel.py           onglet Étalonnage (aperçu + éditeur + footer Dossiers/Options)
-  editor_panel.py          panneau éditeur (presets, curseurs, mes presets, pipette, LUT)
+  editor_panel.py          panneau éditeur (presets exclusifs, curseurs, mes presets, pipette)
   compare_panel.py         BeforeAfterView + workers Preview/Profile/Export
   classify_panel.py        onglet Classification
   rename_panel.py          onglet Renommage
@@ -305,8 +293,7 @@ build.py / build.bat       packaging PyInstaller (onedir/onefile)
 make_ico.py                app_icon.png -> app_icon.ico carré multi-résolution
 version.py                 source unique de la version
 ui_entry.py                point d'entrée (freeze_support + QApplication + icône)
-assets/luts/               LUT .cube (Identity.cube fourni)
-assets/                    modèle CLIP (local, gitignored) + README
+assets/                    modèle SigLIP (local, gitignored) + README
 tests/                     pytest (85)
 ```
 

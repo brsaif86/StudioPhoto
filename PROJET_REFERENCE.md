@@ -417,14 +417,19 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
   `transpose(2,1,0,3)`) ; cache raté par image (lru_cache sur méthode →
   fonction module) ; LUT ignorée avec l'éditeur ; test de régression réécrit.
 
-### v4.0 — Backbone SigLIP-L (précision few-shot maximale)
-- Encodeur d'embeddings passé à **SigLIP ViT-L-16-256/webli** (1024-dim) — bien
-  plus discriminant que ViT-B/32 (512) ou SigLIP-B (768) sur les catégories
-  subjectives. `export_clip_assets.py` lit la normalisation réelle du modèle
-  (`[0.5,0.5,0.5]`), capture `logit_bias`/scoring sigmoïde.
-- Compromis : ONNX plus volumineux (~1+ Go) et embedding plus lent (~s/photo CPU),
-  mais one-shot par mariage → acceptable pour la précision. Garde-fou : modèle
-  few-shot d'un autre backbone détecté (dim ≠) → repli CLIP + invite à ré-entraîner.
+### v4.0 — Few-shot SigLIP-B, simplification (Ollama + LUT retirés)
+- **Classification few-shot sur embeddings SigLIP** (backbone par défaut
+  **ViT-B-16-256/webli**, 768-dim, léger/rapide). `export_clip_assets.py` lit la
+  normalisation réelle du modèle (`[0.5,0.5,0.5]`). Few-shot multi-dossiers
+  (cumule plusieurs mariages), noms normalisés, sélections (highlights) ignorées,
+  plafond/classe. Garde-fou dim (≠ backbone) → repli zero-shot.
+- **Ollama entièrement retiré** : trop lent (~s/photo) et peu fiable (~40 %) sur
+  gros volumes. Le few-shot le remplace (rapide, ~ms/photo, apprend les catégories).
+- **LUT 3D retirée** (moteur, UI « RENDU & LUT », LUT d'exemple, config) : pour un
+  rendu maîtrisé sans surprise, on s'appuie sur les presets + curseurs manuels.
+- **Presets mutuellement exclusifs** : un seul preset appliqué à la fois (Naturel /
+  Noir & Blanc / Cinématique) → rendu cohérent et reproductible.
+- **Fix UI** : titres de section (`QGroupBox`) qui étaient rognés par le cadre.
 
 ### v3.4 — Classification few-shot (apprend tes tris)
 - `core/fewshot.py` : apprend des dossiers déjà triés (embeddings CLIP +
@@ -454,23 +459,22 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 | 3.2.0 | Moteur LUT 3D `.cube` + vibrance (revue & correctifs) |
 | 3.3.0 | Classification hybride CLIP+Ollama + LUT d'exemple + presets validés |
 | 3.4.0 | Classification **few-shot** (apprend les dossiers triés) — rapide & fiable |
-| 4.0.0 | Few-shot **SigLIP** + multi-dossiers/normalisation ; **Ollama retiré** |
+| 4.0.0 | Few-shot **SigLIP-B** ; **Ollama + LUT retirés** ; presets exclusifs |
 
 ---
 
 ## 18. État actuel (v4.0.0)
 
 - ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
-- ✅ `core/` pur testable seul ; **70 tests** au vert (régression pixel, LUT, éditeur, few-shot)
-- ✅ Éditeur : presets validés (Naturel/N&B/Cinématique), 12 curseurs (ordre pro), pipette, LUT 3D
+- ✅ `core/` pur testable seul ; **60 tests** au vert (régression pixel, éditeur, few-shot)
+- ✅ Éditeur : **3 presets exclusifs** (Naturel/N&B/Cinématique, un seul à la fois), 12 curseurs (ordre pro), pipette
 - ✅ Classification : **2 moteurs** — Few-shot (défaut, apprend tes tris) + zero-shot SigLIP (repli)
 - ✅ Backbone embeddings **SigLIP ViT-B-16-256** (768-dim, léger/rapide, normalisation lue auto)
 - ✅ Few-shot multi-dossiers : cumule plusieurs mariages, normalise les noms, ignore les sélections
-- ✅ **Ollama entièrement retiré** (trop lent/peu fiable sur gros volumes) — 100 % cv2+numpy+onnxruntime
+- ✅ **Ollama et LUT entièrement retirés** — rendu maîtrisé, 100 % cv2+numpy+onnxruntime
 - ✅ Workers adaptatifs (60 % cœurs physiques), série cohérente par défaut
 - ✅ CLI `grade` / `rename` / `classify` / `benchmark`
-- ✅ UI dark pro, onglets en haut, style 100 % QSS
-- ✅ LUT `.cube` (R/B corrigé, cache par worker) + 6 LUT d'exemple embarquées
+- ✅ UI dark pro, onglets en haut, style 100 % QSS (titres de section corrigés)
 - ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 4.0.0 OK
 - ⚠ macOS Intel = build local (retiré de la CI)
 - ⚠ Exes CI sans modèle SigLIP (gitignored) ; à générer via export_clip_assets.py

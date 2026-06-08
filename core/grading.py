@@ -12,8 +12,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter
 
-from core.lut_engine import LutEngine, apply_vibrance
-
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".JPG", ".JPEG"}
 DEFAULT_SUFFIX = "_graded"
 DEFAULT_QUALITY = 95
@@ -56,7 +54,7 @@ def analyze_image(arr: np.ndarray) -> dict:
 
 # ── Étalonnage couleur adaptatif v3 ───────────────────────────────────────────
 
-def apply_color_grade(arr: np.ndarray, m: dict, lut_engine=None, lut_name=None, lut_strength=1.0, vibrance=0.0) -> Image.Image:
+def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     """Étalonnage couleur ADAPTATIF (v3). arr normalisé 0..1, modifié en place."""
     mean_lum        = m["mean_lum"]
     std_lum         = m["std_lum"]
@@ -152,13 +150,6 @@ def apply_color_grade(arr: np.ndarray, m: dict, lut_engine=None, lut_name=None, 
     for c in range(3):
         arr[:, :, c] = arr[:, :, c] * (1 - factor) + avg * factor
 
-    # 8. LUT 3D & Vibrance (Optionnel)
-    if lut_engine and lut_name:
-        arr = lut_engine.apply(arr, lut_name, lut_strength)
-
-    if vibrance != 0:
-        arr = apply_vibrance(arr, vibrance)
-
     np.clip(arr, 0, 1, out=arr)
     return Image.fromarray((arr * 255).astype(np.uint8))
 
@@ -184,10 +175,6 @@ def process_image(
     quality: int = DEFAULT_QUALITY,
     profile: dict = None,
     edit=None,
-    lut_engine=None,
-    lut_name=None,
-    lut_strength=1.0,
-    vibrance=0.0,
 ) -> str:
     """Traite une image et retourne un message de statut.
 
@@ -216,7 +203,7 @@ def process_image(
             else:
                 arr01  = arr255 / 255.0
                 m      = profile if profile else analyze_image(arr01)
-                graded = apply_color_grade(arr01, m, lut_engine=lut_engine, lut_name=lut_name, lut_strength=lut_strength, vibrance=vibrance)
+                graded = apply_color_grade(arr01, m)
                 mode   = "Couleur" + ("·série" if profile else "")
                 lum_label = (
                     "sombre"    if m["mean_lum"] < 0.45 else
@@ -225,14 +212,10 @@ def process_image(
                 )
                 info = f"  | lum:{lum_label} cast:{m['warm_cast']:+.2f} hl:{m['highlight_ratio']:.0%}"
         else:
-            # ── Éditeur v3.0 : preset + corrections manuelles (+ LUT) ──
+            # ── Éditeur : preset + corrections manuelles ──
             from core.adjustments import render_with_profile
             arr01 = arr255 / 255.0
-            out01 = render_with_profile(
-                arr01, edit, profile,
-                lut_engine=lut_engine, lut_name=lut_name,
-                lut_strength=lut_strength, vibrance=vibrance,
-            )
+            out01 = render_with_profile(arr01, edit, profile)
             graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
             mode = edit.label()
             info = "  | édité"
@@ -250,7 +233,7 @@ def process_image(
 # ── Aperçu en mémoire (avant / après) ─────────────────────────────────────────
 
 def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None,
-                  edit=None, lut_engine=None, lut_name=None, lut_strength=1.0, vibrance=0.0):
+                  edit=None):
     """Étalonne une image EN MÉMOIRE et retourne (original, graded, mode, metrics).
 
     - Ne sauvegarde rien sur disque (usage : prévisualisation UI).
@@ -278,15 +261,11 @@ def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None,
             mode, metrics = "N&B", {}
         else:
             metrics = profile if profile else analyze_image(arr01)
-            graded  = apply_color_grade(arr01, metrics, lut_engine=lut_engine, lut_name=lut_name, lut_strength=lut_strength, vibrance=vibrance)
+            graded  = apply_color_grade(arr01, metrics)
             mode    = "Couleur" + ("·série" if profile else "")
     else:
         from core.adjustments import render_with_profile
-        out01  = render_with_profile(
-            arr01, edit, profile,
-            lut_engine=lut_engine, lut_name=lut_name,
-            lut_strength=lut_strength, vibrance=vibrance,
-        )
+        out01  = render_with_profile(arr01, edit, profile)
         graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
         mode   = edit.label()
         metrics = profile if profile else analyze_image(arr01)
@@ -321,11 +300,9 @@ def _ensure_std_streams() -> None:
 def _grade_worker(args: tuple) -> str:
     """Wrapper picklable pour mp.Pool."""
     _ensure_std_streams()
-    input_path, output_path, skip_existing, quality, profile, edit, lut_dir, lut_name, lut_strength, vibrance = args
-    engine = LutEngine(lut_dir) if lut_dir else None
+    input_path, output_path, skip_existing, quality, profile, edit = args
     return process_image(
         Path(input_path), Path(output_path), skip_existing, quality, profile, edit,
-        lut_engine=engine, lut_name=lut_name, lut_strength=lut_strength, vibrance=vibrance
     )
 
 
@@ -342,12 +319,8 @@ def collect_grade_tasks(
     on_log=None,
     edit_global=None,
     edits_by_path: dict = None,
-    lut_dir: str = None,
-    lut_name: str = None,
-    lut_strength: float = 1.0,
-    vibrance: float = 0.0,
 ) -> list:
-    """Retourne la liste des tuples (input, output, skip, quality, profile, edit, lut_dir, lut_name, lut_strength, vibrance).
+    """Retourne la liste des tuples (input, output, skip, quality, profile, edit).
 
     - coherent_series=True : profil moyen calculé PAR DOSSIER (rendu uniforme).
     - edit_global : EditParams appliqué à toutes les images sans surcharge.
@@ -392,7 +365,7 @@ def collect_grade_tasks(
         profile = profiles.get(input_path.parent) if coherent_series else None
         edit = edits_by_path.get(str(input_path), edit_global)
         tasks.append(
-            (str(input_path), str(out_path), skip_existing, quality, profile, edit, lut_dir, lut_name, lut_strength, vibrance)
+            (str(input_path), str(out_path), skip_existing, quality, profile, edit)
         )
     return tasks
 
