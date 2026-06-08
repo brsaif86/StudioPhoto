@@ -32,12 +32,8 @@ def _defaults() -> dict:
         "classify_threshold":  0.45,
         "classify_batch":      16,
         "classify_recursive":  True,
-        "classify_engine":     "fewshot",  # "fewshot" | "hybrid" | "ollama" | "clip"
-        "classify_train_dir":  "",         # dossier d'exemples triés (few-shot)
-        "classify_hybrid_threshold": 0.55, # CLIP < seuil → re-classe via Ollama
-        "ollama_model":        "qwen3.5:0.8b",  # léger ; repli auto si absent
-        "ollama_url":          "http://localhost:11434",
-        "ollama_timeout":      300,
+        "classify_engine":     "fewshot",  # "fewshot" | "clip"
+        "classify_train_dir":  "",         # dossier(s) d'exemples triés (few-shot)
         "lut_dir":             str(default_lut_dir()),
         "lut_name":            None,
         "lut_strength":        0.85,

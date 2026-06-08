@@ -336,28 +336,22 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 ### v1.2.0 — Onglet Aperçu + Classification
 - **Aperçu** (`ui/compare_panel.py`) : comparateur avant/après à curseur,
   `grade_preview()` en mémoire (rendu fidèle au lot), QThread.
-- **Classification / tri auto** (`core/classification.py`) — **4 moteurs**,
-  dispatcher `_make_classifier` (défaut Few-shot, replis gracieux) :
+- **Classification / tri auto** (`core/classification.py`) — **2 moteurs**,
+  dispatcher `_make_classifier` (défaut Few-shot, repli zero-shot) :
   - **Few-shot** (`core/fewshot.py`, défaut) : apprend des dossiers **déjà triés**
-    (un sous-dossier = une catégorie). Embeddings CLIP L2 + **régression
+    (un sous-dossier = une catégorie). Embeddings **SigLIP** L2 + **régression
     logistique multinomiale numpy** (aucune dépendance ajoutée). Entraînement en
     secondes, inférence en ms/photo, modèle dans `%APPDATA%/StudioPhoto/
     fewshot_model.npz`. Le plus fiable car il apprend la définition réelle des
-    catégories du client. `FewShotTrainWorker` (UI) entraîne hors thread.
-  - **Hybride** (`HybridClassifier`) : CLIP classe tout le lot, et seules
-    les images sous le `hybrid_threshold` (0.55) sont repassées à Ollama. Si l'un
-    des deux manque → l'autre seul. Vitesse de CLIP + finesse du LLM.
-  - **Ollama** (`core/ollama_classify.py`) : modèle vision local (défaut
-    `qwen3.5:0.8b`, léger) interrogé en HTTP (`/api/generate`, `images:[base64]`,
-    `format:` schéma JSON enum, `temperature:0`, `think:false`). 100 % local,
-    aucune dépendance Python ajoutée (urllib stdlib). `OllamaClassifier` respecte
-    le contrat de `Classifier` (`labels` + `classify_paths`). Image par image
-    (`per_image` → batch_size=1). `list_vision_models()` alimente la liste
-    déroulante de l'UI (filtrée sur la capability `vision` via `/api/show`).
-  - **CLIP** (rapide) : zero-shot **cv2 + onnxruntime** (cv2.dnn ne sait
-    pas exécuter les ViT). Confiance = softmax(`logit_scale`·cos), embeddings
-    texte centrés. `tools/export_clip_assets.py` (offline, torch) génère
-    ONNX (`dynamo=False`, opset 14) + embeddings + meta.
+    catégories du client. Multi-dossiers (cumule plusieurs mariages), noms
+    normalisés (`01 Preparations`→`Preparations`), dossiers de sélection
+    (highlights…) ignorés, plafond/classe. `FewShotTrainWorker` (UI, hors thread,
+    annulable). Garde-fou : modèle d'un autre backbone (dim ≠) → repli zero-shot.
+  - **Zero-shot SigLIP** (repli) : **cv2 + onnxruntime** (cv2.dnn ne sait pas
+    exécuter les ViT). Similarité embeddings image/texte précalculés.
+    `tools/export_clip_assets.py` (offline, torch) génère l'ONNX (`dynamo=False`,
+    opset 14) + embeddings + meta ; lit la normalisation réelle du modèle (SigLIP
+    `[0.5,0.5,0.5]`). Backbone par défaut **ViT-B-16-SigLIP-256/webli** (768-dim).
   - 6 classes + « À revoir » ; manifest json/csv (défaut) ou tri copie/déplacement.
   - Validé (CLIP) sur jeu client étiqueté : Ktuba 95 %, Dance 92 %, Love 88 %.
 
@@ -440,12 +434,7 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
   d'exemples + bouton Entraîner + état du modèle). `FewShotTrainWorker`,
   annulation coopérative, précision validation 85/15 affichée.
 
-### v3.3 — Classification hybride + LUT d'exemple + presets validés
-- **Classification hybride** (`HybridClassifier`, défaut) : CLIP classe tout, et
-  seules les images sous le `hybrid_threshold` (0.55) sont repassées à Ollama.
-  Replis gracieux (CLIP seul / Ollama seul). UI : sélecteur Moteur à 3 voies +
-  **liste déroulante des modèles vision** auto-détectés (`OllamaDetectWorker`)
-  + bouton Détecter + seuil hybride. Modèle par défaut `qwen3.5:0.8b` (léger).
+### v3.3 — LUT d'exemple + presets validés (+ tentative Ollama, retirée en 4.0)
 - **6 LUT `.cube` d'exemple** (mariage/cinéma) générées par
   `tools/make_sample_luts.py` et embarquées dans `assets/luts/`.
 - **Presets réduits au jeu validé client** : Naturel · Noir & Blanc · Cinématique
@@ -465,21 +454,22 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 | 3.2.0 | Moteur LUT 3D `.cube` + vibrance (revue & correctifs) |
 | 3.3.0 | Classification hybride CLIP+Ollama + LUT d'exemple + presets validés |
 | 3.4.0 | Classification **few-shot** (apprend les dossiers triés) — rapide & fiable |
-| 4.0.0 | Backbone **SigLIP-L** (embeddings 1024-dim) — précision few-shot maximale |
+| 4.0.0 | Few-shot **SigLIP** + multi-dossiers/normalisation ; **Ollama retiré** |
 
 ---
 
 ## 18. État actuel (v4.0.0)
 
 - ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
-- ✅ `core/` pur testable seul ; **85 tests** au vert (régression pixel, LUT, éditeur, hybride, few-shot)
+- ✅ `core/` pur testable seul ; **70 tests** au vert (régression pixel, LUT, éditeur, few-shot)
 - ✅ Éditeur : presets validés (Naturel/N&B/Cinématique), 12 curseurs (ordre pro), pipette, LUT 3D
-- ✅ Classification : **4 moteurs** (Few-shot défaut, Hybride, Ollama, CLIP) ; few-shot apprend tes tris
-- ✅ Backbone embeddings **SigLIP ViT-L-16-256** (1024-dim, normalisation lue auto)
+- ✅ Classification : **2 moteurs** — Few-shot (défaut, apprend tes tris) + zero-shot SigLIP (repli)
+- ✅ Backbone embeddings **SigLIP ViT-B-16-256** (768-dim, léger/rapide, normalisation lue auto)
+- ✅ Few-shot multi-dossiers : cumule plusieurs mariages, normalise les noms, ignore les sélections
+- ✅ **Ollama entièrement retiré** (trop lent/peu fiable sur gros volumes) — 100 % cv2+numpy+onnxruntime
 - ✅ Workers adaptatifs (60 % cœurs physiques), série cohérente par défaut
 - ✅ CLI `grade` / `rename` / `classify` / `benchmark`
 - ✅ UI dark pro, onglets en haut, style 100 % QSS
-- ✅ Ollama 100 % local (urllib stdlib, sortie JSON structurée), repli auto CLIP
 - ✅ LUT `.cube` (R/B corrigé, cache par worker) + 6 LUT d'exemple embarquées
 - ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 4.0.0 OK
 - ⚠ macOS Intel = build local (retiré de la CI)

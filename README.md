@@ -13,10 +13,9 @@ Application photo autonome (Windows / macOS) — interface à **onglets en haut*
    - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
 2. **Classification / Tri auto** — catégories de mariage + « À revoir », au choix :
    - **Few-shot** (recommandé) — **apprend de tes dossiers déjà triés** (embeddings
-     CLIP + tête logistique) : rapide (~ms/photo), 100 % local, le plus fiable car
+     SigLIP + tête logistique) : rapide (~ms/photo), 100 % local, le plus fiable car
      il apprend *ta* définition des catégories ;
-   - **Hybride** — CLIP rapide + modèle vision **Ollama local** sur les cas incertains ;
-   - **Ollama** seul, ou **CLIP** zero-shot (OpenCV + onnxruntime).
+   - **Zero-shot SigLIP** — sans entraînement (OpenCV + onnxruntime), repli du few-shot.
 3. **Renommage séquentiel** — par dossier, two-pass, dry-run, reprise.
 
 Version courante : voir `version.py` (`__version__`). Le titre de la fenêtre, le nom
@@ -106,37 +105,30 @@ python cli.py benchmark C:\Photos --workers 6 8 --sample 20
 
 `Preparations · Love Story · Atmosphere · Family · Ktuba and Huppa · Dance`
 
-**Trois moteurs**, sélectionnables dans l'onglet (champ *Moteur*) :
+**Deux moteurs**, sélectionnables dans l'onglet (champ *Moteur*) :
 
-- **Hybride** *(par défaut, recommandé)* — CLIP classe **tout** le lot en quelques
-  secondes, et seules les photos dont la confiance CLIP passe **sous le seuil
-  hybride** sont repassées à un modèle vision **Ollama local**. On garde la
-  vitesse de CLIP tout en gagnant en finesse sur les catégories subjectives
-  (Ambiance, Famille). Si Ollama est absent → CLIP seul (repli transparent).
-- **Ollama local** — un modèle vision local « regarde » **chaque** photo et choisit
-  une catégorie + confiance via une **sortie JSON structurée** (`format` enum).
-  100 % local, le plus fin, mais lent (~quelques s/photo). Repli auto sur CLIP.
-- **CLIP** — zero-shot `cv2` → encodeur image **ONNX** (onnxruntime) → similarité
-  avec des **embeddings texte précalculés** → softmax × `logit_scale`. Le plus
-  rapide, intégré, aucun torch au runtime.
+- **Few-shot** *(par défaut, recommandé)* — **apprend de tes dossiers déjà triés**.
+  On encode tes exemples avec **SigLIP** (embeddings image ONNX/onnxruntime) et on
+  entraîne une **régression logistique** par-dessus. Résultat : tri quasi instantané
+  (~ms/photo), 100 % local, et bien plus fiable car il apprend *ta* définition des
+  catégories (gère l'Ambiance, la Famille, le Ktuba/Huppa). À entraîner une fois
+  dans la section **APPRENTISSAGE** (cumule plusieurs mariages, normalise les noms
+  « 01 Preparations » et ignore les dossiers de sélection type *highlights*).
+- **Zero-shot SigLIP** — sans entraînement : encodeur image **ONNX** → similarité
+  avec des **embeddings texte précalculés** (prompts par catégorie). Repli
+  automatique du few-shot quand aucun modèle n'est encore entraîné.
 
-> **Choix du modèle** : le champ *Modèle* est une **liste déroulante alimentée
-> automatiquement** par les modèles vision détectés dans Ollama (bouton
-> *Détecter* pour rafraîchir) ; `(auto)` prend le premier modèle vision dispo.
-> Le backend passe par HTTP (`localhost:11434`) : **aucune dépendance Python
-> ajoutée**, l'exe reste autonome (Ollama est un outil externe optionnel, modèle
-> à capacité *vision* requis). À chaud : ~5–6 s/photo sur CPU 4B — d'où le mode
-> hybride pour les gros lots.
+> Aucune dépendance lourde au runtime : **cv2 + numpy + onnxruntime** (pas de
+> torch). Le modèle few-shot est sauvé dans `%APPDATA%/StudioPhoto/` (il survit
+> aux mises à jour, reste 100 % local).
 
 ### Générer le modèle (une fois, sur machine dev)
 
 ```bat
 pip install -r requirements-dev.txt
-:: backbone recommandé : SigLIP-L (meilleurs embeddings pour le few-shot)
-python tools\export_clip_assets.py --model ViT-L-16-SigLIP-256 --pretrained webli
-:: variante plus légère/rapide : ViT-B-16-SigLIP-256
-:: ancien CLIP (plus rapide, moins précis) :
-:: python tools\export_clip_assets.py --model ViT-B-32 --pretrained laion2b_s34b_b79k
+:: backbone par défaut : SigLIP-B (léger, rapide, excellent pour le few-shot)
+python tools\export_clip_assets.py --model ViT-B-16-SigLIP-256 --pretrained webli
+:: plus précis mais ~5x plus lourd/lent : ViT-L-16-SigLIP-256
 ```
 
 Produit dans `assets/` (exclus du dépôt car volumineux) :
@@ -179,12 +171,11 @@ pytest tests/ -v
 - `test_renaming.py` — renommage (2 passes, dry-run, reprise, trous).
 - `test_classification.py` — preprocess, softmax/seuil, mapping, manifest,
   isolation des images corrompues.
-- `test_ollama_classify.py` — backend Ollama (mocké) : prompt, schéma JSON,
-  `resolve_model`, mode **hybride** (garde CLIP / adopte le LLM / repli).
 - `test_fewshot.py` — moteur **few-shot** : régression logistique, entraînement
-  depuis dossiers triés, sauvegarde/chargement, inférence, gestion d'erreur.
+  depuis dossiers triés (multi-dossiers, normalisation), sauvegarde/chargement,
+  inférence, gestion d'erreur.
 
-> 85 tests au total.
+> 70 tests au total.
 
 ---
 
@@ -292,12 +283,10 @@ core/                      moteur pur, AUCUNE dépendance UI
   lut_engine.py            LUT 3D .cube (chargement, interp. trilinéaire, cache,
                            vibrance) — numpy + cv2
   renaming.py              rename_folder, collect_rename_targets
-  classification.py        zero-shot CLIP (preprocess cv2, Classifier onnxruntime,
+  classification.py        SigLIP (preprocess cv2, Classifier onnxruntime,
                            run_classify_batch + dispatcher moteur, manifest, tri)
-  ollama_classify.py       backend vision local (OllamaClassifier, HTTP stdlib,
-                           sortie JSON structurée) — repli auto sur CLIP
   fewshot.py               few-shot : apprend des dossiers triés (embeddings
-                           CLIP + régression logistique), modèle en %APPDATA%
+                           SigLIP + régression logistique), modèle en %APPDATA%
   runner.py                run_grade_batch (pool multiprocessing + callbacks)
   config.py                persistance JSON (%APPDATA%/StudioPhoto/)
 ui/                        PySide6 — style 100% via ui/style.py (QSS), zéro inline

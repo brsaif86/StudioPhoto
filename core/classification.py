@@ -263,48 +263,9 @@ def _place(src: Path, dest_dir: Path, mode: str) -> None:
 
 # ── Pipeline batch avec callbacks (réutilise la progress card) ────────────────
 
-class HybridClassifier:
-    """Moteur hybride : CLIP classe TOUT le lot (rapide) ; seules les images
-    dont la confiance CLIP est sous le seuil sont repassées à Ollama (lent mais
-    plus fin sur les catégories subjectives). Le meilleur des deux mondes.
-
-    Même contrat que `Classifier` (`labels` + `classify_paths`). `per_image`
-    reste False : CLIP traite par lots, le LLM n'intervient qu'au cas par cas.
-    """
-    per_image = False
-
-    def __init__(self, clip_clf, ollama_clf, threshold: float):
-        self.clip = clip_clf
-        self.ollama = ollama_clf
-        self.threshold = float(threshold)
-        self._labels = list(clip_clf.labels)
-
-    @property
-    def labels(self):
-        return self._labels
-
-    def classify_paths(self, paths):
-        results = self.clip.classify_paths(paths)        # passe CLIP (lot)
-        for r in results:
-            if "error" in r or r.get("confidence", 1.0) >= self.threshold:
-                continue
-            try:
-                better = self.ollama.classify_one(r["path"])   # avis du LLM
-            except Exception:
-                continue
-            if "error" in better:
-                continue
-            name = self.ollama.labels[better["idx"]]
-            if name in self._labels:                     # adopte l'avis du LLM
-                r["idx"] = self._labels.index(name)
-                r["confidence"] = better["confidence"]
-                r["engine"] = "ollama"
-        return results
-
-
 def _build_clip(assets_dir, on_log):
     if not assets_available() and assets_dir is None:
-        on_log("  ✗ Modèle CLIP absent : place mobileclip_image.onnx, "
+        on_log("  ✗ Modèle absent : place mobileclip_image.onnx, "
                "text_embeddings.npy et clip_meta.json dans assets/ "
                "(voir tools/export_clip_assets.py).")
         return None
@@ -312,37 +273,24 @@ def _build_clip(assets_dir, on_log):
     try:
         clf.load()
     except Exception as exc:
-        on_log(f"  ✗ Échec chargement modèle CLIP : {exc}")
+        on_log(f"  ✗ Échec chargement modèle : {exc}")
         return None
     return clf
 
 
-def _build_ollama(ollama_model, ollama_url, ollama_timeout, on_log):
-    try:
-        from core.ollama_classify import OllamaClassifier
-        oc = OllamaClassifier(ollama_model, ollama_url, ollama_timeout)
-        oc.load()
-        return oc
-    except Exception as exc:
-        on_log(f"  ⚠ Ollama indisponible ({exc})")
-        return None
+def _make_classifier(engine, assets_dir, on_log):
+    """Sélectionne le moteur de classification.
 
-
-def _make_classifier(engine, assets_dir, ollama_model, ollama_url,
-                     ollama_timeout, hybrid_threshold, on_log):
-    """Sélectionne le moteur de classification (avec replis gracieux).
-
-    - "clip"   : CLIP zero-shot (rapide, embarqué).
-    - "ollama" : modèle vision local ; repli sur CLIP si indisponible.
-    - "hybrid" : CLIP partout + Ollama sur les cas incertains ; si l'un des deux
-      manque, on utilise l'autre seul.
+    - "fewshot" (défaut) : tête apprise sur des dossiers déjà triés (embeddings
+      SigLIP + régression logistique) ; repli sur zero-shot si non entraîné.
+    - "clip" : SigLIP zero-shot (prompts texte).
     Retourne un classifieur (`.labels` + `.classify_paths`) ou None.
     """
     if engine == "fewshot":
         import numpy as _np
         from core.fewshot import load_model, FewShotClassifier
         model = load_model()
-        embedder = _build_clip(assets_dir, on_log)   # CLIP/SigLIP sert d'encodeur
+        embedder = _build_clip(assets_dir, on_log)        # SigLIP sert d'encodeur
         if model and embedder:
             # garde-fou : dimension d'embedding compatible avec le backbone actuel ?
             probe = embedder.forward(_np.zeros(
@@ -350,7 +298,7 @@ def _make_classifier(engine, assets_dir, ollama_model, ollama_url,
             if probe.shape[1] != model["W"].shape[1]:
                 on_log(f"  ⚠ Modèle few-shot entraîné avec un autre backbone "
                        f"(dim {model['W'].shape[1]} ≠ {probe.shape[1]}). "
-                       f"Ré-entraîne-le. Repli sur CLIP zero-shot.")
+                       f"Ré-entraîne-le. Repli sur zero-shot.")
                 return embedder
             fs = FewShotClassifier.from_model(embedder, model)
             acc = model.get("acc", float("nan"))
@@ -362,37 +310,14 @@ def _make_classifier(engine, assets_dir, ollama_model, ollama_url,
             on_log("  ✗ Aucun modèle few-shot entraîné — clique « Entraîner » "
                    "(dossier d'exemples triés par catégorie).")
         if embedder:
-            on_log("  ⚠ Repli sur CLIP zero-shot.")
+            on_log("  ⚠ Repli sur zero-shot.")
             return embedder
         return None
 
-    if engine == "hybrid":
-        clip = _build_clip(assets_dir, on_log)
-        oll = _build_ollama(ollama_model, ollama_url, ollama_timeout, on_log)
-        if clip and oll:
-            on_log(f"  Moteur : Hybride · CLIP rapide + Ollama {oll.model} "
-                   f"sur les cas < {hybrid_threshold:.0%}")
-            return HybridClassifier(clip, oll, hybrid_threshold)
-        if clip:
-            on_log("  Moteur : CLIP seul (Ollama indisponible pour l'hybride).")
-            return clip
-        if oll:
-            on_log(f"  Moteur : Ollama {oll.model} seul (CLIP indisponible).")
-            return oll
-        on_log("  ✗ Aucun moteur disponible (ni CLIP ni Ollama).")
-        return None
-
-    if engine == "ollama":
-        oll = _build_ollama(ollama_model, ollama_url, ollama_timeout, on_log)
-        if oll:
-            on_log(f"  Moteur : Ollama · {oll.model} (analyse visuelle locale)")
-            return oll
-        on_log("  ⚠ Repli sur CLIP.")
-
-    # CLIP (choix explicite ou repli)
+    # SigLIP zero-shot
     clip = _build_clip(assets_dir, on_log)
     if clip:
-        on_log("  Moteur : CLIP (MobileCLIP, zero-shot)")
+        on_log("  Moteur : zero-shot (SigLIP)")
     return clip
 
 
@@ -405,11 +330,7 @@ def run_classify_batch(
     batch_size: int = 16,
     manifest_name: str = "results.json",
     assets_dir: Path = None,
-    engine: str = "hybrid",          # "hybrid" | "ollama" | "clip"
-    ollama_model: str = None,
-    ollama_url: str = None,
-    ollama_timeout: float = 120,
-    hybrid_threshold: float = 0.55,  # CLIP < seuil → re-classe via Ollama
+    engine: str = "fewshot",         # "fewshot" | "clip"
     on_log: Callable[[str], None] = print,
     on_progress: Callable[[int, int], None] = None,
     on_current: Callable[[str, str], None] = None,
@@ -419,9 +340,8 @@ def run_classify_batch(
 ) -> dict:
     """Classe toutes les images d'un dossier. Mono-process.
 
-    Moteur par défaut : Hybride (CLIP rapide sur tout le lot + Ollama sur les
-    images incertaines). CLIP traite par lots ; Ollama traite image par image
-    (batch_size forcé à 1 quand le moteur est « image par image »).
+    Moteur par défaut : Few-shot (tête apprise sur des dossiers triés) ; repli
+    sur SigLIP zero-shot si aucun modèle n'est entraîné. Traitement par lots.
     """
     folder = Path(folder)
     files = collect_images(folder, recursive)
@@ -430,12 +350,10 @@ def run_classify_batch(
         on_log("  Aucune image trouvée.")
         return {"ok": 0, "review": 0, "errors": 0, "total": 0}
 
-    clf = _make_classifier(engine, assets_dir, ollama_model, ollama_url,
-                           ollama_timeout, hybrid_threshold, on_log)
+    clf = _make_classifier(engine, assets_dir, on_log)
     if clf is None:
         return {"ok": 0, "review": 0, "errors": 0, "total": total, "no_model": True}
 
-    # un moteur « image par image » (Ollama) → lot de 1 pour une progression fluide
     if getattr(clf, "per_image", False):
         batch_size = 1
 
