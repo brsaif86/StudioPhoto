@@ -3,6 +3,7 @@ ui/style.py — QSS stylesheet v2.1
 """
 
 ACCENT   = "#C8A96E"
+TITLE    = "#E8D3A2"   # or clair pour les titres de section (bon contraste)
 BG0      = "#0D0D0D"
 BG1      = "#131313"
 BG2      = "#1A1A1A"
@@ -107,21 +108,20 @@ QGroupBox {{
     background-color: {BG2};
     border: 1px solid {BORDER};
     border-radius: 6px;
-    margin-top: 22px;
-    padding: 20px 16px 16px 16px;
+    margin-top: 16px;
+    padding: 16px 16px 16px 16px;
 }}
 
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: 12px;
-    top: -9px;
-    padding: 2px 8px;
+    padding: 0 6px;
     background-color: {BG2};
-    color: {ACCENT};
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 2px;
+    color: {TITLE};
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
 }}
 
 /* ── Inputs ──────────────────────────────────────────────── */
@@ -468,10 +468,10 @@ QFrame#editor_box {{
 }}
 
 QLabel#editor_title {{
-    color: {TEXT2};
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 2px;
+    color: {TITLE};
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
 }}
 
 QLabel#slider_value {{
