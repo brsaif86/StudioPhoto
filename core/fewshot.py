@@ -19,16 +19,43 @@ sur une taxonomie subjective car il voit TES exemples.
 (`labels` + `classify_paths`) pour s'intégrer dans la boucle de traitement.
 """
 
+import re
 from pathlib import Path
 
 import numpy as np
 
 from core.classification import (
-    Classifier, preprocess, SUPPORTED_EXTENSIONS,
+    Classifier, preprocess, SUPPORTED_EXTENSIONS, LABELS,
 )
 
 MODEL_VERSION = 1
 _MIN_PER_CLASS = 3
+_DEFAULT_MAX_PER_CLASS = 200          # plafond/catégorie (la logreg sature avant)
+
+# Dossiers qui NE sont PAS des catégories visuelles (sélections, sorties…) →
+# les inclure polluerait le modèle (ils contiennent des photos de TOUTES classes).
+_IGNORE_LABELS = {
+    "highlights", "hightlights", "highlight", "best", "best of", "favoris",
+    "favorites", "selection", "sélection", "_output", "output", "review",
+    "à revoir", "a revoir", "apercu", "aperçu", "export", "exports",
+}
+
+
+def _normalize_label(name: str):
+    """« 01 Preparations » → « Preparations ». None si dossier à ignorer.
+
+    Retire un préfixe numérique d'ordre, normalise les espaces, et mappe vers
+    les libellés canoniques (insensible à la casse) quand c'est possible.
+    """
+    s = re.sub(r"^\s*\d+\s*[._)\-]*\s*", "", name)     # « 01 », « 02_ », « 3) »
+    s = re.sub(r"\s+", " ", s).strip()
+    key = s.lower()
+    if not key or key in _IGNORE_LABELS:
+        return None
+    for lab in LABELS:                                 # canonicalise si match
+        if lab.lower() == key:
+            return lab
+    return s
 
 
 def default_model_path() -> Path:
@@ -100,20 +127,43 @@ def _predict(X, W, b):
     return e / e.sum(axis=1, keepdims=True)
 
 
-def _gather_examples(train_dir: Path, on_log):
-    """{catégorie: [chemins]} pour chaque sous-dossier ayant assez d'exemples."""
-    train_dir = Path(train_dir)
+def _gather_examples(train_dirs, on_log, max_per_class=_DEFAULT_MAX_PER_CLASS):
+    """{catégorie: [chemins]} fusionné sur 1..N dossiers d'apprentissage.
+
+    Noms normalisés (« 01 Preparations »→« Preparations »), dossiers non-catégorie
+    ignorés, et chaque classe plafonnée à `max_per_class` (échantillon aléatoire).
+    """
+    if isinstance(train_dirs, (str, Path)):
+        train_dirs = [train_dirs]
+
+    buckets = {}                                       # label normalisé → [chemins]
+    for root in train_dirs:
+        root = Path(root)
+        if not root.exists():
+            on_log(f"  ⚠ dossier introuvable : {root}")
+            continue
+        for d in sorted(x for x in root.iterdir()
+                        if x.is_dir() and not x.name.startswith(".")):
+            label = _normalize_label(d.name)
+            if label is None:
+                on_log(f"  ⊘ « {d.name} » ignoré (sélection / non-catégorie)")
+                continue
+            imgs = [p for p in d.rglob("*")
+                    if p.suffix in SUPPORTED_EXTENSIONS and not p.name.startswith("._")]
+            buckets.setdefault(label, []).extend(imgs)
+
+    rng = np.random.default_rng(0)
     per_class = {}
-    subdirs = [d for d in sorted(train_dir.iterdir())
-               if d.is_dir() and not d.name.startswith((".", "_"))]
-    for d in subdirs:
-        imgs = sorted(p for p in d.rglob("*")
-                      if p.suffix in SUPPORTED_EXTENSIONS
-                      and not p.name.startswith("._"))
-        if len(imgs) >= _MIN_PER_CLASS:
-            per_class[d.name] = imgs
-        elif imgs:
-            on_log(f"  ⚠ « {d.name} » ignoré ({len(imgs)} image(s) < {_MIN_PER_CLASS}).")
+    for label, imgs in buckets.items():
+        if len(imgs) < _MIN_PER_CLASS:
+            on_log(f"  ⚠ « {label} » ignoré ({len(imgs)} image(s) < {_MIN_PER_CLASS}).")
+            continue
+        kept = imgs
+        if max_per_class and len(imgs) > max_per_class:
+            idx = sorted(rng.choice(len(imgs), size=max_per_class, replace=False))
+            kept = [imgs[i] for i in idx]
+            on_log(f"  • {label} : {len(imgs)} → {max_per_class} (échantillon)")
+        per_class[label] = kept
     return per_class
 
 
@@ -121,15 +171,17 @@ class CancelledError(Exception):
     """Levée quand l'entraînement est annulé par l'utilisateur."""
 
 
-def train_from_folders(train_dir, embedder: Classifier,
-                       on_log=print, on_progress=None, cancel_event=None) -> dict:
-    """Entraîne la tête few-shot depuis des sous-dossiers (un par catégorie).
+def train_from_folders(train_dirs, embedder: Classifier,
+                       on_log=print, on_progress=None, cancel_event=None,
+                       max_per_class=_DEFAULT_MAX_PER_CLASS) -> dict:
+    """Entraîne la tête few-shot depuis 1..N dossiers (sous-dossiers = catégories).
 
-    Retourne {"labels", "W", "b", "n", "acc"} (acc = précision sur 15 % retenus).
-    Lève RuntimeError si moins de 2 catégories exploitables, CancelledError si
-    `cancel_event` est déclenché en cours de route.
+    `train_dirs` : un chemin ou une liste de chemins (mariages déjà triés). Les
+    noms sont normalisés et fusionnés ; chaque classe est plafonnée à
+    `max_per_class`. Retourne {"labels","W","b","n","acc"} (acc = validation 15 %).
+    Lève RuntimeError si < 2 catégories exploitables, CancelledError si annulé.
     """
-    per_class = _gather_examples(train_dir, on_log)
+    per_class = _gather_examples(train_dirs, on_log, max_per_class)
     if len(per_class) < 2:
         raise RuntimeError("au moins 2 catégories avec ≥ "
                            f"{_MIN_PER_CLASS} images sont requises")

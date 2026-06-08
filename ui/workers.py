@@ -110,8 +110,9 @@ class FewShotTrainWorker(QThread):
             self.log_line.emit("  Encodage CLIP des exemples…")
             embedder = Classifier(self._assets_dir)
             embedder.load()
+            dirs = [d.strip() for d in str(self._train_dir).split(";") if d.strip()]
             res = train_from_folders(
-                self._train_dir, embedder,
+                dirs, embedder,
                 on_log=self.log_line.emit,
                 on_progress=self.progress.emit,
                 cancel_event=self._cancel,

@@ -162,15 +162,20 @@ class ClassifyPanel(QWidget):
         fg.setColumnStretch(1, 1)
 
         self.train_edit = self._path_input(
-            "Dossier d'exemples : un sous-dossier par catégorie (déjà triés)…")
+            "Dossiers d'exemples triés (sous-dossiers = catégories) — "
+            "« Ajouter » pour cumuler plusieurs mariages…")
+        self.train_edit.setToolTip(
+            "Un ou plusieurs mariages déjà triés, séparés par « ; ». Les noms sont "
+            "normalisés (« 01 Preparations » = « Preparations ») et les dossiers de "
+            "sélection (highlights, best…) sont ignorés automatiquement.")
         lbl_tr = QLabel("Exemples :")
         lbl_tr.setObjectName("form_label")
         lbl_tr.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        btn_tr = QPushButton("Parcourir…")
+        btn_tr = QPushButton("Ajouter…")
         btn_tr.setObjectName("btn_browse")
         btn_tr.setFixedWidth(90)
         btn_tr.setCursor(Qt.PointingHandCursor)
-        btn_tr.clicked.connect(lambda: self._browse(self.train_edit))
+        btn_tr.clicked.connect(self._add_train_folder)
         self.btn_train = QPushButton("Entraîner")
         self.btn_train.setObjectName("btn_browse")
         self.btn_train.setFixedWidth(90)
@@ -273,14 +278,26 @@ class ClassifyPanel(QWidget):
 
     # ── Apprentissage few-shot ────────────────────────────────────────────────
 
+    def _add_train_folder(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Ajouter un mariage trié")
+        if not path:
+            return
+        cur = self.train_edit.text().strip()
+        parts = [p.strip() for p in cur.split(";") if p.strip()]
+        if path not in parts:
+            parts.append(path)
+        self.train_edit.setText(" ; ".join(parts))
+
     def _on_train_clicked(self) -> None:
-        folder = self.train_edit.text().strip()
-        if not folder or not Path(folder).is_dir():
-            self.model_status.setText("⚠ Choisis un dossier d'exemples valide "
-                                      "(un sous-dossier par catégorie).")
+        raw = self.train_edit.text().strip()
+        dirs = [d.strip() for d in raw.split(";") if d.strip()]
+        valid = [d for d in dirs if Path(d).is_dir()]
+        if not valid:
+            self.model_status.setText("⚠ Indique au moins un dossier d'exemples "
+                                      "valide (sous-dossiers = catégories).")
             return
         self.btn_train.setEnabled(False)
-        self.train_requested.emit(folder)
+        self.train_requested.emit(" ; ".join(valid))
 
     def refresh_model_info(self) -> None:
         """Met à jour l'étiquette d'état du modèle few-shot (et réactive Entraîner)."""
