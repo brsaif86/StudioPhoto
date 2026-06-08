@@ -52,6 +52,15 @@ def analyze_image(arr: np.ndarray) -> dict:
     }
 
 
+# ── Réglages du look « Naturel » (calés sur la réf. Esposa/Mimon) ─────────────
+# Décale ici le rendu de BASE pour toutes les photos. Le dosage par photo/série
+# se fait avec les curseurs de l'éditeur (Température, Contraste, Vignettage,
+# Vibrance), qui s'empilent par-dessus.
+NATUREL_WARMTH   = 0.012   # touche chaude golden (peau/midtones). 0 = neutre.
+NATUREL_CONTRAST = 1.0     # multiplicateur de la courbe de contraste. 1 = défaut.
+NATUREL_VIGNETTE = 0.12    # assombrissement des coins. 0 = aucun vignettage.
+
+
 # ── Étalonnage couleur adaptatif v3 ───────────────────────────────────────────
 
 def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
@@ -91,7 +100,7 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     #    profonds + hautes lumières dégagées (séparation tonale façon mariage pro,
     #    style Mimon/Esposa). Atténué sur les images sombres (anti-bouchage).
     pivot = 0.42
-    contrast = 0.16 if std_lum > 0.20 else (0.22 if std_lum > 0.15 else 0.28)
+    contrast = (0.16 if std_lum > 0.20 else (0.22 if std_lum > 0.15 else 0.28)) * NATUREL_CONTRAST
     if mean_lum < 0.42:
         contrast *= 0.6
     arr -= pivot
@@ -129,8 +138,8 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
 
     # 5b. Touche chaude « golden » très légère (peau/midtones). Les blancs sont
     #     re-neutralisés à l'étape 7 → chaleur sans jaunir la robe.
-    arr[:, :, 0] *= 1.012
-    arr[:, :, 2] *= 0.990
+    arr[:, :, 0] *= 1.0 + NATUREL_WARMTH
+    arr[:, :, 2] *= 1.0 - NATUREL_WARMTH * 0.83
     np.clip(arr, 0, 1, out=arr)
 
     # 6. Gamma lift adaptatif
@@ -175,7 +184,7 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     cy, cx = (h - 1) / 2.0, (w - 1) / 2.0
     d = np.sqrt(((xx - cx) / (cx + 1e-6)) ** 2 + ((yy - cy) / (cy + 1e-6)) ** 2)
     vmask = (np.clip(d / 1.41, 0.0, 1.0) ** 2)[:, :, np.newaxis].astype(np.float32)
-    arr *= (1.0 - 0.12 * vmask)
+    arr *= (1.0 - NATUREL_VIGNETTE * vmask)
 
     np.clip(arr, 0, 1, out=arr)
     return Image.fromarray((arr * 255).astype(np.uint8))
