@@ -56,8 +56,8 @@ def analyze_image(arr: np.ndarray) -> dict:
 # Décale ici le rendu de BASE pour toutes les photos. Le dosage par photo/série
 # se fait avec les curseurs de l'éditeur (Température, Contraste, Vignettage,
 # Vibrance), qui s'empilent par-dessus.
-NATUREL_WARMTH   = 0.010   # touche chaude golden (atténuée sur la peau). 0 = neutre.
-NATUREL_CONTRAST = 1.0     # multiplicateur de la courbe de contraste. 1 = défaut.
+NATUREL_WARMTH   = 0.005   # touche chaude golden (atténuée sur la peau). 0 = neutre.
+NATUREL_CONTRAST = 0.6     # multiplicateur de la courbe de contraste. 1 = défaut.
 NATUREL_VIGNETTE = 0.12    # assombrissement des coins. 0 = aucun vignettage.
 
 
@@ -136,7 +136,7 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
     # Correction peau ADOUCIE : on retire moins de rouge et on ajoute très peu
     # de bleu → la peau garde sa chaleur naturelle (évite le teint terne/gris).
     skin_strength = 0.5 if warm_cast > 0.08 else 1.0
-    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.022 * skin_strength
+    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.028 * skin_strength
     arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.006 * skin_strength
 
     # 5. Vibrance — booste la saturation des zones PEU saturées (verts, bleus,
@@ -153,7 +153,7 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
 
     # 5b. Touche chaude « golden » très légère (peau/midtones). Les blancs sont
     #     re-neutralisés à l'étape 7 → chaleur sans jaunir la robe.
-    wr = NATUREL_WARMTH * (1.0 - orange_mask * 0.6)     # moins de chaleur sur la peau
+    wr = NATUREL_WARMTH * (1.0 - orange_mask * 0.75)    # quasi pas de chaleur sur la peau
     arr[:, :, 0] *= 1.0 + wr
     arr[:, :, 2] *= 1.0 - wr * 0.83
     np.clip(arr, 0, 1, out=arr)
