@@ -156,20 +156,25 @@ def apply_color_grade_warm(arr: np.ndarray, m: dict) -> Image.Image:
         dtype=np.float32,
     ) / 255.0
 
-    # 1. Chaleur ambre globale — R et G montent (jaune doré), B descend.
-    #    Peau modérément tempérée : elle doit garder le glow doré.
-    w = 0.040 * (1.0 - skin * 0.35)
+    # 1. Chaleur pêche-dorée sur les MIDTONES uniquement — les blancs (robe) et
+    #    les noirs restent propres : pas de voile jaune global. Très peu de vert
+    #    (jaune = R+G ; pêche = surtout R), peau légèrement tempérée.
+    lum = (0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2])
+    mid = np.clip(1.0 - np.abs(lum - 0.48) / 0.40, 0.0, 1.0)      # cloche midtones
+    w = 0.030 * mid * (1.0 - skin * 0.45)
     a[:, :, 0] *= 1.0 + w
-    a[:, :, 1] *= 1.0 + w * 0.45
-    a[:, :, 2] *= 1.0 - w * 1.05
+    a[:, :, 1] *= 1.0 + w * 0.12
+    a[:, :, 2] *= 1.0 - w * 0.85
     np.clip(a, 0, 1, out=a)
 
-    # 2. Split-tone golden hour : hautes lumières → halo doré, ombres → brun chaud.
+    # 2. Split-tone discret : glow chaud dans les hautes lumières NON blanches
+    #    (le blanc pur reste neutre), ombres légèrement chocolat.
     lum = (0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2])
-    hi = (lum ** 2)[:, :, np.newaxis]
+    not_white = np.clip((0.92 - lum) / 0.20, 0.0, 1.0)            # protège les blancs
+    hi = ((lum ** 2) * not_white)[:, :, np.newaxis]
     sh = ((1.0 - lum) ** 2)[:, :, np.newaxis]
-    a += hi * np.asarray([0.045, 0.028, -0.020], np.float32)   # glow doré
-    a += sh * np.asarray([0.012, 0.004, -0.010], np.float32)   # ombres chocolat
+    a += hi * np.asarray([0.030, 0.012, -0.012], np.float32)      # glow pêche
+    a += sh * np.asarray([0.010, 0.003, -0.008], np.float32)      # ombres chocolat
     np.clip(a, 0, 1, out=a)
 
     # 3. Légère profondeur (contraste doux côté ombres) — fonds romantiques.
