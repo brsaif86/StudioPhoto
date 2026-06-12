@@ -140,8 +140,14 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
 
 
 def apply_color_grade_warm(arr: np.ndarray, m: dict) -> Image.Image:
-    """« Naturel 2 » : étalonnage v3 PUIS touche chaude dorée (peau protégée)."""
-    img = apply_color_grade(arr, m)                      # v3 (couleurs naturelles)
+    """« Naturel 2 » — golden hour romantique (réf. Dotan Maor / Esposa).
+
+    v3 d'abord (base naturelle), puis un ton DORÉ marqué : chaleur ambre
+    globale (R+G montent, B descend → les verts tirent vers l'olive), halo
+    doré dans les hautes lumières, ombres légèrement chocolat, et un soupçon
+    de profondeur. La peau prend le glow (légèrement tempérée, pas isolée).
+    """
+    img = apply_color_grade(arr, m)                      # base v3 naturelle
     a = np.asarray(img, dtype=np.float32) / 255.0
     r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
     skin = ((r > 0.45) & (g > 0.30) & (b < 0.60) & (r > g) & (g > b)).astype(np.float32)
@@ -149,9 +155,27 @@ def apply_color_grade_warm(arr: np.ndarray, m: dict) -> Image.Image:
         Image.fromarray((skin * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(8)),
         dtype=np.float32,
     ) / 255.0
-    w = 0.018 * (1.0 - skin * 0.7)                       # chaleur atténuée sur la peau
+
+    # 1. Chaleur ambre globale — R et G montent (jaune doré), B descend.
+    #    Peau modérément tempérée : elle doit garder le glow doré.
+    w = 0.040 * (1.0 - skin * 0.35)
     a[:, :, 0] *= 1.0 + w
-    a[:, :, 2] *= 1.0 - w * 0.83
+    a[:, :, 1] *= 1.0 + w * 0.45
+    a[:, :, 2] *= 1.0 - w * 1.05
+    np.clip(a, 0, 1, out=a)
+
+    # 2. Split-tone golden hour : hautes lumières → halo doré, ombres → brun chaud.
+    lum = (0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2])
+    hi = (lum ** 2)[:, :, np.newaxis]
+    sh = ((1.0 - lum) ** 2)[:, :, np.newaxis]
+    a += hi * np.asarray([0.045, 0.028, -0.020], np.float32)   # glow doré
+    a += sh * np.asarray([0.012, 0.004, -0.010], np.float32)   # ombres chocolat
+    np.clip(a, 0, 1, out=a)
+
+    # 3. Légère profondeur (contraste doux côté ombres) — fonds romantiques.
+    pivot = 0.45
+    d = a - pivot
+    a = pivot + d * np.where(d < 0.0, 1.12, 1.0)
     np.clip(a, 0, 1, out=a)
     return Image.fromarray((a * 255).astype(np.uint8))
 
