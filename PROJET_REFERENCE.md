@@ -460,6 +460,8 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 | 3.3.0 | Classification hybride CLIP+Ollama + LUT d'exemple + presets validés |
 | 3.4.0 | Classification **few-shot** (apprend les dossiers triés) — rapide & fiable |
 | 4.0.0 | Few-shot **SigLIP-B** ; **Ollama + LUT retirés** ; presets exclusifs |
+| 4.0.1 | Naturel = rendu v3 original validé client ; preset **Naturel 2** ; fix double-sélection |
+| 4.2.0 | **Naturel 2 calibré** : couleurs fidèles + touche cinématique (teal & orange subtil) |
 
 ---
 

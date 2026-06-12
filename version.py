@@ -1,3 +1,3 @@
-__version__ = "4.0.1"
+__version__ = "4.2.0"
 APP_NAME    = "StudioPhoto"
 FULL_NAME   = f"{APP_NAME} v{__version__}"
