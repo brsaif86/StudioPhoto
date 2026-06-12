@@ -140,12 +140,12 @@ def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
 
 
 def apply_color_grade_warm(arr: np.ndarray, m: dict) -> Image.Image:
-    """« Naturel 2 » — golden hour romantique (réf. Dotan Maor / Esposa).
+    """« Naturel 2 » — couleurs naturelles fidèles + touche cinématique.
 
-    v3 d'abord (base naturelle), puis un ton DORÉ marqué : chaleur ambre
-    globale (R+G montent, B descend → les verts tirent vers l'olive), halo
-    doré dans les hautes lumières, ombres légèrement chocolat, et un soupçon
-    de profondeur. La peau prend le glow (légèrement tempérée, pas isolée).
+    v3 d'abord (base naturelle fidèle), puis une teinte d'ambiance très dosée :
+    légère chaleur sur les midtones (blancs/noirs intacts), hautes lumières un
+    soupçon chaudes, ombres un soupçon teal (teal & orange subtil), et une
+    pointe de profondeur. Réf. d'ambiance : Dotan Maor / Esposa.
     """
     img = apply_color_grade(arr, m)                      # base v3 naturelle
     a = np.asarray(img, dtype=np.float32) / 255.0
@@ -156,25 +156,24 @@ def apply_color_grade_warm(arr: np.ndarray, m: dict) -> Image.Image:
         dtype=np.float32,
     ) / 255.0
 
-    # 1. Chaleur pêche-dorée sur les MIDTONES uniquement — les blancs (robe) et
-    #    les noirs restent propres : pas de voile jaune global. Très peu de vert
-    #    (jaune = R+G ; pêche = surtout R), peau légèrement tempérée.
+    # 1. Très légère chaleur sur les MIDTONES — fidèle aux couleurs naturelles,
+    #    aucun voile : blancs (robe) et noirs intacts, peau tempérée.
     lum = (0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2])
     mid = np.clip(1.0 - np.abs(lum - 0.48) / 0.40, 0.0, 1.0)      # cloche midtones
-    w = 0.030 * mid * (1.0 - skin * 0.45)
+    w = 0.012 * mid * (1.0 - skin * 0.45)
     a[:, :, 0] *= 1.0 + w
-    a[:, :, 1] *= 1.0 + w * 0.12
-    a[:, :, 2] *= 1.0 - w * 0.85
+    a[:, :, 2] *= 1.0 - w * 0.80
     np.clip(a, 0, 1, out=a)
 
-    # 2. Split-tone discret : glow chaud dans les hautes lumières NON blanches
-    #    (le blanc pur reste neutre), ombres légèrement chocolat.
+    # 2. Touche CINÉMATIQUE subtile (teal & orange très dosé) : hautes lumières
+    #    non blanches un soupçon chaudes, ombres un soupçon teal. Les couleurs
+    #    restent fidèles — c'est une teinte d'ambiance, pas un filtre.
     lum = (0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2])
     not_white = np.clip((0.92 - lum) / 0.20, 0.0, 1.0)            # protège les blancs
     hi = ((lum ** 2) * not_white)[:, :, np.newaxis]
     sh = ((1.0 - lum) ** 2)[:, :, np.newaxis]
-    a += hi * np.asarray([0.030, 0.012, -0.012], np.float32)      # glow pêche
-    a += sh * np.asarray([0.010, 0.003, -0.008], np.float32)      # ombres chocolat
+    a += hi * np.asarray([0.016, 0.007, -0.006], np.float32)      # HL légèrement chaudes
+    a += sh * np.asarray([-0.006, 0.001, 0.008], np.float32)      # ombres légèrement teal
     np.clip(a, 0, 1, out=a)
 
     # 3. Légère profondeur (contraste doux côté ombres) — fonds romantiques.
