@@ -6,6 +6,8 @@ Composants réutilisés par l'onglet Étalonnage :
   - BeforeAfterView : vue à curseur (split slider) Original | Étalonné.
 """
 
+from pathlib import Path
+
 from PySide6.QtWidgets import QWidget, QSizePolicy
 from PySide6.QtCore import Qt, QThread, Signal, QPointF, QRectF
 from PySide6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QFont
