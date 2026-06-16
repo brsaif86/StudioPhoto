@@ -1,13 +1,22 @@
 # StudioPhoto
 
-Application photo autonome (Windows / macOS) regroupant **4 outils** :
+Application photo autonome (Windows / macOS) — interface à **onglets en haut**,
+3 modules :
 
-1. **Étalonnage adaptatif v3** — couleur + N&B, multiprocessing, anti-surexposition,
-   mode série cohérente, blancs neutres. Reprise de lot.
-2. **Aperçu** — comparateur avant/après à curseur (rendu identique au lot).
-3. **Classification / Tri auto** — zero-shot CLIP (OpenCV + onnxruntime, sans torch
-   au runtime) en 6 catégories de mariage + « À revoir ».
-4. **Renommage séquentiel** — par dossier, two-pass, dry-run, reprise.
+1. **Étalonnage** — éditeur interactif avec aperçu avant/après intégré :
+   - base adaptative v3 (couleur + N&B, anti-surexposition, blancs neutres, peau
+     naturelle) + **mode série cohérente** (rendu uniforme par dossier) ;
+   - **4 presets exclusifs** (un seul à la fois) : Naturel (étalonnage v3 naturel),
+     Naturel 2 (v3 + touche chaude dorée), Noir & Blanc, Cinématique ;
+   - **corrections manuelles** (12 curseurs) ; **presets personnalisés** ;
+     **pipette balance des blancs** ;
+   - réglage **global** ou **par image** ; multiprocessing + reprise de lot.
+2. **Classification / Tri auto** — catégories de mariage + « À revoir », au choix :
+   - **Few-shot** (recommandé) — **apprend de tes dossiers déjà triés** (embeddings
+     SigLIP + tête logistique) : rapide (~ms/photo), 100 % local, le plus fiable car
+     il apprend *ta* définition des catégories ;
+   - **Zero-shot SigLIP** — sans entraînement (OpenCV + onnxruntime), repli du few-shot.
+3. **Renommage séquentiel** — par dossier, two-pass, dry-run, reprise.
 
 Version courante : voir `version.py` (`__version__`). Le titre de la fenêtre, le nom
 de l'exe et les artefacts CI en découlent.
@@ -34,7 +43,27 @@ Pillow  numpy  PySide6  psutil  opencv-python-headless  onnxruntime  pyinstaller
 python ui_entry.py
 ```
 
-Sidebar : **Étalonnage · Aperçu · Classification · Renommage**.
+Onglets en haut : **Étalonnage · Classification · Renommage**.
+Disposition Étalonnage : aperçu (≈60 %) | éditeur (≈40 %) en haut ; en bas,
+Dossiers + Options + LANCER/ANNULER à gauche, console à droite.
+
+---
+
+## Éditeur d'étalonnage (onglet Étalonnage)
+
+| Bloc | Détail |
+|------|--------|
+| **Presets** | 4 presets **mutuellement exclusifs** (un seul à la fois) : **Naturel** (étalonnage v3 naturel/doux), **Naturel 2** (v3 + touche chaude dorée, peau protégée), **Noir & Blanc**, **Cinématique**. Re-cliquer le preset actif → photo originale. |
+| **Mes presets** | Sauver / appliquer / supprimer ses propres réglages (persistés en config). |
+| **Corrections manuelles** | 12 curseurs bipolaires (0 = neutre) : Exposition, Contraste, Hautes lumières, Ombres, Température, Teinte, Vibrance, Saturation, Clarté, Netteté, Vignettage, Grain. |
+| **Pipette BdB** | Clic sur une zone neutre de l'aperçu → corrige automatiquement la balance des blancs (température + teinte). |
+| **Portée** | « Appliquer à toute la série » (global) ou réglage **par image** (surcharge). |
+| **Réinitialiser** | Revient à la **photo originale** (aucun preset, curseurs à 0). |
+| **Enregistrer les modifications** | Exporte l'image courante avec les réglages actifs. |
+
+Invariant : **Naturel seul + curseurs à 0 = étalonnage v3 strict** (le lot par
+défaut ne change pas). L'aperçu reflète exactement le rendu du lot (profil de
+série inclus).
 
 ---
 
@@ -68,19 +97,38 @@ python cli.py benchmark C:\Photos --workers 6 8 --sample 20
 
 `Preparations · Love Story · Atmosphere · Family · Ktuba and Huppa · Dance`
 
-Pipeline : `cv2` (décodage/prétraitement) → encodeur image CLIP **ONNX** exécuté
-par **onnxruntime** → similarité avec des **embeddings texte précalculés** →
-softmax × `logit_scale`. Aucun torch au runtime.
+**Deux moteurs**, sélectionnables dans l'onglet (champ *Moteur*) :
+
+- **Few-shot** *(par défaut, recommandé)* — **apprend de tes dossiers déjà triés**.
+  On encode tes exemples avec **SigLIP** (embeddings image ONNX/onnxruntime) et on
+  entraîne une **régression logistique** par-dessus. Résultat : tri quasi instantané
+  (~ms/photo), 100 % local, et bien plus fiable car il apprend *ta* définition des
+  catégories (gère l'Ambiance, la Famille, le Ktuba/Huppa). À entraîner une fois
+  dans la section **APPRENTISSAGE** (cumule plusieurs mariages, normalise les noms
+  « 01 Preparations » et ignore les dossiers de sélection type *highlights*).
+- **Zero-shot SigLIP** — sans entraînement : encodeur image **ONNX** → similarité
+  avec des **embeddings texte précalculés** (prompts par catégorie). Repli
+  automatique du few-shot quand aucun modèle n'est encore entraîné.
+
+> Aucune dépendance lourde au runtime : **cv2 + numpy + onnxruntime** (pas de
+> torch). Le modèle few-shot est sauvé dans `%APPDATA%/StudioPhoto/` (il survit
+> aux mises à jour, reste 100 % local).
 
 ### Générer le modèle (une fois, sur machine dev)
 
 ```bat
 pip install -r requirements-dev.txt
-python tools\export_clip_assets.py --model ViT-B-32 --pretrained laion2b_s34b_b79k
+:: backbone par défaut : SigLIP-B (léger, rapide, excellent pour le few-shot)
+python tools\export_clip_assets.py --model ViT-B-16-SigLIP-256 --pretrained webli
+:: plus précis mais ~5x plus lourd/lent : ViT-L-16-SigLIP-256
 ```
 
 Produit dans `assets/` (exclus du dépôt car volumineux) :
-`mobileclip_image.onnx` · `text_embeddings.npy` · `clip_meta.json`.
+`mobileclip_image.onnx` · `text_embeddings.npy` · `clip_meta.json`. La
+normalisation (mean/std) est lue automatiquement sur le modèle (SigLIP ≠ CLIP).
+
+> ⚠️ Après un changement de backbone, **ré-entraîne le modèle few-shot** (la
+> dimension d'embedding change ; l'app détecte l'incompatibilité et te le signale).
 
 Sans ces fichiers, l'onglet Classification affiche un avertissement ; le reste de
 l'app fonctionne normalement.
@@ -108,9 +156,16 @@ pytest tests/ -v
 
 - `test_grading.py` — étalonnage v3 (dont régression pixel `RMSE < 2/255`,
   blancs neutres, anti-surexposition, profil série).
+- `test_adjustments.py` — éditeur : invariant *Naturel+0 = v3*, presets
+  empilés, corrections manuelles, sérialisation, « Original ».
 - `test_renaming.py` — renommage (2 passes, dry-run, reprise, trous).
 - `test_classification.py` — preprocess, softmax/seuil, mapping, manifest,
   isolation des images corrompues.
+- `test_fewshot.py` — moteur **few-shot** : régression logistique, entraînement
+  depuis dossiers triés (multi-dossiers, normalisation), sauvegarde/chargement,
+  inférence, gestion d'erreur.
+
+> 60 tests au total.
 
 ---
 
@@ -213,28 +268,33 @@ Sur tag, une **Release GitHub** est créée avec les artefacts (`if: always()`).
 ```
 core/                      moteur pur, AUCUNE dépendance UI
   grading.py               algo v3 + anti-surexpo + profil série + default_workers()
+  adjustments.py           éditeur : EditParams, presets exclusifs, corrections
+                           manuelles, render_with_profile
   renaming.py              rename_folder, collect_rename_targets
-  classification.py        zero-shot CLIP (preprocess cv2, Classifier onnxruntime,
-                           run_classify_batch, manifest, tri physique)
+  classification.py        SigLIP (preprocess cv2, Classifier onnxruntime,
+                           run_classify_batch + dispatcher moteur, manifest, tri)
+  fewshot.py               few-shot : apprend des dossiers triés (embeddings
+                           SigLIP + régression logistique), modèle en %APPDATA%
   runner.py                run_grade_batch (pool multiprocessing + callbacks)
   config.py                persistance JSON (%APPDATA%/StudioPhoto/)
 ui/                        PySide6 — style 100% via ui/style.py (QSS), zéro inline
-  app.py                   MainWindow (sidebar 4 vues, progress card, console)
-  grade_panel.py           onglet Étalonnage
-  compare_panel.py         onglet Aperçu (slider avant/après)
+  app.py                   MainWindow (onglets en haut, bas 50/50, console)
+  grade_panel.py           onglet Étalonnage (aperçu + éditeur + footer Dossiers/Options)
+  editor_panel.py          panneau éditeur (presets exclusifs, curseurs, mes presets, pipette)
+  compare_panel.py         BeforeAfterView + workers Preview/Profile/Export
   classify_panel.py        onglet Classification
   rename_panel.py          onglet Renommage
   workers.py               GradeWorker / RenameWorker / ClassifyWorker (QThread)
   style.py                 thème dark pro (palette ambre)
 tools/
-  export_clip_assets.py    génération hors-ligne des assets (torch, DEV only)
+  export_clip_assets.py    génération hors-ligne des assets CLIP (torch, DEV only)
 cli.py                     CLI grade / rename / classify / benchmark
 build.py / build.bat       packaging PyInstaller (onedir/onefile)
 make_ico.py                app_icon.png -> app_icon.ico carré multi-résolution
 version.py                 source unique de la version
 ui_entry.py                point d'entrée (freeze_support + QApplication + icône)
-assets/                    modèle CLIP (local, gitignored) + README
-tests/                     pytest
+assets/                    modèle SigLIP (local, gitignored) + README
+tests/                     pytest (85)
 ```
 
 ---

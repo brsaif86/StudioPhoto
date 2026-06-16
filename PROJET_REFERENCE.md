@@ -336,15 +336,24 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 ### v1.2.0 — Onglet Aperçu + Classification
 - **Aperçu** (`ui/compare_panel.py`) : comparateur avant/après à curseur,
   `grade_preview()` en mémoire (rendu fidèle au lot), QThread.
-- **Classification / tri auto** (`core/classification.py`) :
-  - Zero-shot CLIP via **cv2 (prétraitement) + onnxruntime (inférence)**.
-    cv2.dnn ne sait pas exécuter les ViT → onnxruntime (toujours sans torch).
-  - 6 classes + « À revoir » ; confiance = softmax(`logit_scale`·cos) ; centrage
-    des embeddings texte (retrait 50 % composante commune).
-  - Mono-process batché ; manifest json/csv (défaut) ou tri copie/déplacement.
-  - `tools/export_clip_assets.py` (offline, torch) : ONNX (`dynamo=False`,
-    opset 14) + embeddings + meta.
-  - Validé sur jeu client étiqueté : Ktuba 95 %, Dance 92 %, Love 88 %.
+- **Classification / tri auto** (`core/classification.py`) — **2 moteurs**,
+  dispatcher `_make_classifier` (défaut Few-shot, repli zero-shot) :
+  - **Few-shot** (`core/fewshot.py`, défaut) : apprend des dossiers **déjà triés**
+    (un sous-dossier = une catégorie). Embeddings **SigLIP** L2 + **régression
+    logistique multinomiale numpy** (aucune dépendance ajoutée). Entraînement en
+    secondes, inférence en ms/photo, modèle dans `%APPDATA%/StudioPhoto/
+    fewshot_model.npz`. Le plus fiable car il apprend la définition réelle des
+    catégories du client. Multi-dossiers (cumule plusieurs mariages), noms
+    normalisés (`01 Preparations`→`Preparations`), dossiers de sélection
+    (highlights…) ignorés, plafond/classe. `FewShotTrainWorker` (UI, hors thread,
+    annulable). Garde-fou : modèle d'un autre backbone (dim ≠) → repli zero-shot.
+  - **Zero-shot SigLIP** (repli) : **cv2 + onnxruntime** (cv2.dnn ne sait pas
+    exécuter les ViT). Similarité embeddings image/texte précalculés.
+    `tools/export_clip_assets.py` (offline, torch) génère l'ONNX (`dynamo=False`,
+    opset 14) + embeddings + meta ; lit la normalisation réelle du modèle (SigLIP
+    `[0.5,0.5,0.5]`). Backbone par défaut **ViT-B-16-SigLIP-256/webli** (768-dim).
+  - 6 classes + « À revoir » ; manifest json/csv (défaut) ou tri copie/déplacement.
+  - Validé (CLIP) sur jeu client étiqueté : Ktuba 95 %, Dance 92 %, Love 88 %.
 
 ### Icône & packaging
 - `make_ico.py` corrigé : recadre + carré + ICO multi-résolution (le PNG source
@@ -375,30 +384,103 @@ Retours retouche extraits du PDF client (lecture via PyMuPDF, pages = images) :
 
 ---
 
-## 16. Versions
+## 16. Évolutions v2 / v3
+
+### v2.0 — Refonte UI + corrections rendu
+- Disposition **2 colonnes** (réglages | aperçu), puis aperçu intégré à
+  l'étalonnage (curseur avant/après, navigation par image).
+- Couleurs **moins fades** (désaturation 7→3 %), **peau plus naturelle**
+  (correction peau adoucie).
+- Fixes packaging : `cv2.imdecode` (chemins Unicode), flux `stdout/stderr`
+  non-None en `--windowed` (multiprocessing), `--onedir` par défaut quand le
+  modèle est embarqué, nettoyage `dist/` avant build (verrous).
+
+### v3.0 — Éditeur interactif
+- `core/adjustments.py` : `EditParams` (presets **empilables** + 12 curseurs),
+  `render_with_profile`. Base Naturel (= v3) ou Noir & Blanc + looks créatifs.
+  **Invariant** : Naturel + curseurs à 0 == v3 strict.
+- Presets (jeu validé client) : **Naturel** · **Noir & Blanc** · **Cinématique**.
+  Naturel répond à lui seul à toutes les exigences (couleurs naturelles, teint
+  réaliste, série cohérente) ; Cinématique = touche ciné empilable.
+- **Mes presets** (sauver/charger), **pipette balance des blancs**, réglage
+  **global ou par image**, « Réinitialiser » = **photo originale**.
+- UI : **onglets en haut** (sidebar supprimée), compteurs retirés, bas **50/50**
+  (Dossiers+Options+LANCER | console), aperçu 60 % / éditeur 40 %, boutons compacts.
+
+### v3.2 — Moteur LUT 3D
+- `core/lut_engine.py` : LUT `.cube` (interp. trilinéaire vectorisée), vibrance,
+  **cache module-level** (dossier+nom) → `.cube` lu une fois par worker.
+- Intégrée au pipeline (étape 8, après neutralisation des blancs) **et** à
+  l'éditeur (`render_with_profile`). Workers picklables (seules les chaînes
+  `lut_dir`/`lut_name` passent ; `LutEngine` reconstruit dans le worker).
+- **Bugs corrigés à la revue** : inversion R↔B (`.cube` rouge le plus rapide →
+  `transpose(2,1,0,3)`) ; cache raté par image (lru_cache sur méthode →
+  fonction module) ; LUT ignorée avec l'éditeur ; test de régression réécrit.
+
+### v4.0 — Few-shot SigLIP-B, simplification (Ollama + LUT retirés)
+- **Classification few-shot sur embeddings SigLIP** (backbone par défaut
+  **ViT-B-16-256/webli**, 768-dim, léger/rapide). `export_clip_assets.py` lit la
+  normalisation réelle du modèle (`[0.5,0.5,0.5]`). Few-shot multi-dossiers
+  (cumule plusieurs mariages), noms normalisés, sélections (highlights) ignorées,
+  plafond/classe. Garde-fou dim (≠ backbone) → repli zero-shot.
+- **Ollama entièrement retiré** : trop lent (~s/photo) et peu fiable (~40 %) sur
+  gros volumes. Le few-shot le remplace (rapide, ~ms/photo, apprend les catégories).
+- **LUT 3D retirée** (moteur, UI « RENDU & LUT », LUT d'exemple, config) : pour un
+  rendu maîtrisé sans surprise, on s'appuie sur les presets + curseurs manuels.
+- **Presets mutuellement exclusifs** : un seul preset appliqué à la fois (Naturel /
+  Noir & Blanc / Cinématique) → rendu cohérent et reproductible.
+- **Fix UI** : titres de section (`QGroupBox`) qui étaient rognés par le cadre.
+
+### v3.4 — Classification few-shot (apprend tes tris)
+- `core/fewshot.py` : apprend des dossiers déjà triés (embeddings CLIP +
+  régression logistique numpy) → rapide, 100 % local, bien plus fiable que le
+  zero-shot/LLM sur une taxonomie subjective. Modèle dans `%APPDATA%`.
+- UI : moteur **Few-shot** par défaut + section « APPRENTISSAGE » (dossier
+  d'exemples + bouton Entraîner + état du modèle). `FewShotTrainWorker`,
+  annulation coopérative, précision validation 85/15 affichée.
+
+### v3.3 — LUT d'exemple + presets validés (+ tentative Ollama, retirée en 4.0)
+- **6 LUT `.cube` d'exemple** (mariage/cinéma) générées par
+  `tools/make_sample_luts.py` et embarquées dans `assets/luts/`.
+- **Presets réduits au jeu validé client** : Naturel · Noir & Blanc · Cinématique
+  (retrait des 5 autres looks). `apply_manual` suit l'**ordre pro** (lumière →
+  balance des blancs → contraste → couleur → local → finitions).
+- **Fix** : crash au démarrage de l'exe (`QComboBox`/`QSlider` non importés).
+
+## 17. Versions
 
 | Version | Apport |
 |---------|--------|
 | 1.0.x | App de base (étalonnage + renommage), CI multi-OS, icône, versioning |
 | 1.1.0 | Anti-surexposition + série cohérente + blancs neutres (défaut) |
 | 1.2.0 | Aperçu avant/après + Classification zero-shot CLIP |
+| 2.0.0 | Aperçu intégré, peau naturelle, fixes packaging |
+| 3.0.0 | Éditeur interactif (presets empilables, curseurs, pipette, UI onglets) |
+| 3.2.0 | Moteur LUT 3D `.cube` + vibrance (revue & correctifs) |
+| 3.3.0 | Classification hybride CLIP+Ollama + LUT d'exemple + presets validés |
+| 3.4.0 | Classification **few-shot** (apprend les dossiers triés) — rapide & fiable |
+| 4.0.0 | Few-shot **SigLIP-B** ; **Ollama + LUT retirés** ; presets exclusifs |
+| 4.0.1 | Naturel = rendu v3 original validé client ; preset **Naturel 2** ; fix double-sélection |
+| 4.2.0 | **Naturel 2 calibré** : couleurs fidèles + touche cinématique (teal & orange subtil) |
 
 ---
 
-## 17. État actuel
+## 18. État actuel (v4.0.0)
 
-- ✅ 4 outils : Étalonnage · Aperçu · Classification · Renommage
-- ✅ `core/` pur testable seul ; **40 tests** au vert (dont régression pixel)
+- ✅ 3 onglets : Étalonnage (éditeur intégré) · Classification · Renommage
+- ✅ `core/` pur testable seul ; **60 tests** au vert (régression pixel, éditeur, few-shot)
+- ✅ Éditeur : **4 presets exclusifs** (Naturel v3, Naturel 2 chaud, N&B, Cinématique), 12 curseurs, pipette
+- ✅ Classification : **2 moteurs** — Few-shot (défaut, apprend tes tris) + zero-shot SigLIP (repli)
+- ✅ Backbone embeddings **SigLIP ViT-B-16-256** (768-dim, léger/rapide, normalisation lue auto)
+- ✅ Few-shot multi-dossiers : cumule plusieurs mariages, normalise les noms, ignore les sélections
+- ✅ **Ollama et LUT entièrement retirés** — rendu maîtrisé, 100 % cv2+numpy+onnxruntime
 - ✅ Workers adaptatifs (60 % cœurs physiques), série cohérente par défaut
 - ✅ CLI `grade` / `rename` / `classify` / `benchmark`
-- ✅ UI dark pro, style 100 % QSS, progress card réutilisée partout
-- ✅ Versioning centralisé, icône carrée, build onedir/onefile
-- ✅ Classification CLIP (onnxruntime, sans torch), modèle local exclu du git
-- ✅ Build Windows + macOS Silicon fonctionnels en CI ; tag `v1.2.0` publié
-- ⚠ Build macOS Intel dépend des runners `macos-13` (continue-on-error)
-- ⚠ Exes CI sans modèle (gitignored) → classification inactive ; seul le build
-  local avec `assets/` peuplé embarque le tri auto
+- ✅ UI dark pro, onglets en haut, style 100 % QSS (titres de section corrigés)
+- ✅ Build Windows + macOS Silicon en CI (sur tag `v*`) ; build local 4.0.0 OK
+- ⚠ macOS Intel = build local (retiré de la CI)
+- ⚠ Exes CI sans modèle SigLIP (gitignored) ; à générer via export_clip_assets.py
 
 ---
 
-*Document de référence — mis à jour jusqu'à la v1.2.0.*
+*Document de référence — mis à jour jusqu'à la v4.0.0.*

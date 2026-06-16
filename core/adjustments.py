@@ -4,9 +4,11 @@ core/adjustments.py — Moteur d'édition v3.0 (presets + corrections manuelles)
 Pur NumPy, sans dépendance UI. Deux niveaux :
 
 1. PRESET (look complet, indépendant) :
-       Naturel · Cinématique · Noir & Blanc · Vintage · Golden Hour · Froid
+       Naturel · Noir & Blanc · Cinématique
    « Naturel » = l'étalonnage adaptatif v3 (blancs neutres, anti-surexpo,
-   peau naturelle). Les autres presets sont des looks créatifs autonomes.
+   peau naturelle, série cohérente) : il répond à lui seul à TOUTES les
+   exigences client validées. « Cinématique » ajoute une touche ciné
+   par-dessus. « Noir & Blanc » = conversion N&B.
 
 2. CORRECTIONS MANUELLES (par-dessus le preset) :
        Exposition · Contraste · Hautes lumières · Ombres · Saturation
@@ -22,15 +24,14 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 from core.grading import (
-    analyze_image, apply_color_grade, apply_bw_grade, is_grayscale,
+    analyze_image, apply_color_grade, apply_color_grade_warm, apply_bw_grade,
+    is_grayscale,
 )
 
 DEFAULT_PRESET = "Naturel"
-BASE_PRESETS = ["Naturel", "Noir & Blanc"]                 # correction de base
-LOOK_PRESETS = ["Cinématique", "Clair & Aéré", "Peau douce",
-                "Vintage", "Golden Hour", "Froid"]          # looks empilables
-PRESETS = ["Naturel", "Noir & Blanc", "Cinématique", "Clair & Aéré",
-           "Peau douce", "Vintage", "Golden Hour", "Froid"]
+BASE_PRESETS = ["Naturel", "Naturel 2", "Noir & Blanc"]   # bases exclusives
+LOOK_PRESETS = ["Cinématique"]                            # touche créative
+PRESETS = ["Naturel", "Naturel 2", "Noir & Blanc", "Cinématique"]
 
 _SLIDER_NAMES = ("exposure", "contrast", "highlights", "shadows",
                  "temperature", "tint", "vibrance", "saturation",
@@ -68,7 +69,10 @@ class EditParams:
         return all(getattr(self, n) == 0.0 for n in _SLIDER_NAMES)
 
     def base(self) -> str:
-        return "Noir & Blanc" if "Noir & Blanc" in self.presets else "Naturel"
+        for b in BASE_PRESETS:
+            if b in self.presets:
+                return b
+        return DEFAULT_PRESET
 
     def looks(self) -> list:
         return [p for p in LOOK_PRESETS if p in self.presets]
@@ -92,6 +96,12 @@ class EditParams:
         # rétro-compat : ancien champ unique « preset »
         if "presets" not in kw and "preset" in d:
             kw["presets"] = [d["preset"]]
+        # migration : sélection EXCLUSIVE — un seul preset à la fois. Les anciennes
+        # configs empilées (ex. Naturel + Cinématique) sont ramenées à leur base.
+        ps = kw.get("presets")
+        if ps and len(ps) > 1:
+            base = next((p for p in ps if p in BASE_PRESETS), None)
+            kw["presets"] = [base] if base else [ps[0]]
         return cls(**kw)
 
 
@@ -210,17 +220,25 @@ def _grain(arr, v, seed=None):   # grain argentique (bruit de luminance)
 
 
 def apply_manual(arr: np.ndarray, p: EditParams, grain_seed=None) -> np.ndarray:
-    """Applique les corrections manuelles dans l'ordre, en place."""
-    _exposure(arr, p.exposure)
-    _contrast(arr, p.contrast)
+    """Applique les corrections manuelles, en place, dans l'ORDRE PRO :
+
+    1. lumière (exposition, hautes lumières, ombres)
+    2. balance des blancs (température, teinte)
+    3. contraste
+    4. correction colorimétrique (vibrance, saturation = TSL)
+    5. contraste local (clarté)
+    6. touches finales (netteté, vignettage, grain)
+    """
+    _exposure(arr, p.exposure)          # 1. lumière
     _highlights(arr, p.highlights)
     _shadows(arr, p.shadows)
-    _temperature(arr, p.temperature)
+    _temperature(arr, p.temperature)    # 2. balance des blancs
     _tint(arr, p.tint)
-    _vibrance(arr, p.vibrance)
+    _contrast(arr, p.contrast)          # 3. contraste
+    _vibrance(arr, p.vibrance)          # 4. couleur (TSL)
     _saturation(arr, p.saturation)
-    _clarity(arr, p.clarity)
-    _sharpness(arr, p.sharpness)
+    _clarity(arr, p.clarity)            # 5. contraste local
+    _sharpness(arr, p.sharpness)        # 6. touches finales
     _vignette(arr, p.vignette)
     np.clip(arr, 0, 1, out=arr)
     _grain(arr, p.grain, seed=grain_seed)
@@ -347,17 +365,14 @@ _LOOKS = {
 # ── Rendu unifié ──────────────────────────────────────────────────────────────
 
 def render_with_profile(arr01: np.ndarray, params: EditParams,
-                        profile: dict = None, grain_seed=None,
-                        lut_engine=None, lut_name=None, lut_strength=1.0,
-                        vibrance=0.0) -> np.ndarray:
-    """Rendu unifié : base (Naturel/N&B) PUIS looks empilés PUIS corrections.
+                        profile: dict = None, grain_seed=None) -> np.ndarray:
+    """Rendu unifié : base (Naturel/N&B) PUIS look PUIS corrections manuelles.
 
     - base « Naturel » : étalonnage v3, piloté par le profil dossier si fourni
       (rendu uniforme sur la série) ; sinon métriques par image.
     - base « Noir & Blanc » : conversion N&B.
-    - looks créatifs (Cinématique, Vintage, Golden Hour, Froid) appliqués dans
-      l'ordre, par-dessus la base.
-    - puis les 8 corrections manuelles.
+    - look créatif (Cinématique) appliqué par-dessus la base.
+    - puis les corrections manuelles.
     """
     # Aucun preset sélectionné → image ORIGINALE (aucun étalonnage), seules
     # les corrections manuelles éventuelles s'appliquent. C'est l'état rendu
@@ -366,7 +381,7 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
         out = arr01.copy()
         if not params._sliders_zero():
             out = apply_manual(out, params, grain_seed=grain_seed)
-        return _apply_lut_vibrance(out, lut_engine, lut_name, lut_strength, vibrance)
+        return np.clip(out, 0, 1)
 
     base = params.base()
     if base == "Noir & Blanc":
@@ -377,7 +392,8 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
             out = np.asarray(apply_bw_grade(arr01.copy()), dtype=np.float32) / 255.0
         else:
             m = profile if profile else analyze_image(arr01)
-            out = np.asarray(apply_color_grade(arr01.copy(), m), dtype=np.float32) / 255.0
+            grade = apply_color_grade_warm if base == "Naturel 2" else apply_color_grade
+            out = np.asarray(grade(arr01.copy(), m), dtype=np.float32) / 255.0
 
     for look in params.looks():
         out = _LOOKS[look](out)
@@ -385,17 +401,6 @@ def render_with_profile(arr01: np.ndarray, params: EditParams,
     if not params.is_neutral():
         out = apply_manual(out, params, grain_seed=grain_seed)
 
-    # LUT 3D + vibrance, en dernier (cohérent avec le chemin v3, étape 8)
-    return _apply_lut_vibrance(out, lut_engine, lut_name, lut_strength, vibrance)
-
-
-def _apply_lut_vibrance(out, lut_engine, lut_name, lut_strength, vibrance):
-    """Applique LUT (si fournie) puis vibrance (si non nulle). N&B exclu de la LUT."""
-    if lut_engine and lut_name:
-        out = lut_engine.apply(out, lut_name, lut_strength)
-    if vibrance:
-        from core.lut_engine import apply_vibrance
-        out = apply_vibrance(out, vibrance)
     return np.clip(out, 0, 1)
 
 

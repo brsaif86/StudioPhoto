@@ -30,10 +30,6 @@ def run_grade_batch(
     on_speed: Callable[[float], None] = None,        # images/sec
     on_eta: Callable[[int], None] = None,            # seconds remaining
     cancel_event: threading.Event = None,
-    lut_dir: str = None,
-    lut_name: str = None,
-    lut_strength: float = 1.0,
-    vibrance: float = 0.0,
 ) -> dict:
     """Lance le traitement complet d'un dossier.
 
@@ -48,7 +44,6 @@ def run_grade_batch(
         folder, suffix, output_dir, recursive, skip_existing, quality,
         coherent_series, on_log=on_log,
         edit_global=edit_global, edits_by_path=edits_by_path,
-        lut_dir=lut_dir, lut_name=lut_name, lut_strength=lut_strength, vibrance=vibrance,
     )
     total = len(tasks)
     if total == 0:

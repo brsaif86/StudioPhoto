@@ -29,14 +29,14 @@ def test_natural_zero_equals_v3():
 def test_editparams_is_neutral():
     assert EditParams().is_neutral()
     assert not EditParams(exposure=10).is_neutral()
-    assert not EditParams(presets=["Vintage"]).is_neutral()
+    assert not EditParams(presets=["Noir & Blanc"]).is_neutral()
     assert not EditParams(presets=["Naturel", "Cinématique"]).is_neutral()
 
 
 # ── Sérialisation ─────────────────────────────────────────────────────────────
 
 def test_editparams_roundtrip():
-    p = EditParams(presets=["Naturel", "Cinématique"], exposure=15, grain=20)
+    p = EditParams(presets=["Cinématique"], exposure=15, grain=20)   # un seul preset
     d = p.to_dict()
     p2 = EditParams.from_dict(d)
     assert p2 == p
@@ -45,6 +45,13 @@ def test_editparams_roundtrip():
     assert EditParams.from_dict({"exposure": 5, "inconnu": 9}).exposure == 5
     # rétro-compat ancien champ « preset »
     assert EditParams.from_dict({"preset": "Vintage"}).presets == ["Vintage"]
+
+
+def test_legacy_stacked_presets_collapse_to_one():
+    """Migration : une ancienne config empilée → un seul preset (la base)."""
+    assert EditParams.from_dict({"presets": ["Naturel", "Cinématique"]}).presets == ["Naturel"]
+    assert EditParams.from_dict({"presets": ["Noir & Blanc", "Cinématique"]}).presets == ["Noir & Blanc"]
+    assert EditParams.from_dict({"presets": ["Cinématique"]}).presets == ["Cinématique"]
 
 
 # ── Presets combinés ──────────────────────────────────────────────────────────
@@ -106,6 +113,15 @@ def test_grain_adds_variation():
 
 def test_render_to_image_type():
     arr = patch(0.5, 0.45, 0.4)
-    img = render_to_image(arr, EditParams(presets=["Vintage"]))
+    img = render_to_image(arr, EditParams(presets=["Cinématique"]))
     assert isinstance(img, Image.Image)
     assert img.size == (48, 48)
+
+
+def test_removed_look_falls_back_to_naturel():
+    """Un look retiré (ex. ancien « Vintage » d'une config sauvegardée) est
+    ignoré au rendu : le résultat est identique au preset Naturel seul."""
+    arr = patch(0.55, 0.45, 0.40)
+    naturel = render(arr, EditParams(presets=["Naturel"]))
+    legacy = render(arr, EditParams(presets=["Naturel", "Vintage"]))
+    np.testing.assert_allclose(legacy, naturel, atol=1e-6)

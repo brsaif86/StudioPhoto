@@ -17,7 +17,7 @@ from core import config as cfg_store
 from ui.grade_panel import GradePanel
 from ui.rename_panel import RenamePanel
 from ui.classify_panel import ClassifyPanel
-from ui.workers import GradeWorker, RenameWorker, ClassifyWorker
+from ui.workers import GradeWorker, RenameWorker, ClassifyWorker, FewShotTrainWorker
 from ui.style import QSS, ACCENT, SUCCESS, ERROR, SKIP, REVIEW, TEXT2, TEXT3
 from version import FULL_NAME, __version__
 
@@ -112,6 +112,7 @@ class MainWindow(QMainWindow):
         self.grade_panel    = GradePanel()
         self.rename_panel   = RenamePanel()
         self.classify_panel = ClassifyPanel()
+        self.classify_panel.train_requested.connect(self._start_fewshot_train)
         self.stack.addWidget(self.grade_panel)     # index 0
         self.stack.addWidget(self.rename_panel)    # index 1
         self.stack.addWidget(self.classify_panel)  # index 2
@@ -335,6 +336,31 @@ class MainWindow(QMainWindow):
         worker.eta.connect(self._update_eta)
         worker.finished.connect(self._on_classify_done)
         self._start_worker(worker)
+
+    def _start_fewshot_train(self, folder: str) -> None:
+        if self._worker is not None:
+            return
+        self._log_sep()
+        self._log("  Apprentissage few-shot (encodage CLIP des exemples)…", TEXT2)
+        self._log(f"  Exemples : {folder}", TEXT2)
+        worker = FewShotTrainWorker(folder)
+        worker.log_line.connect(self._log_auto)
+        worker.progress.connect(self._update_progress)
+        worker.finished.connect(self._on_train_done)
+        self._start_worker(worker)
+
+    def _on_train_done(self, result: dict) -> None:
+        self._log_sep()
+        if result.get("ok"):
+            acc = result.get("acc", float("nan"))
+            acc_txt = f"  ·  précision {acc:.0%}" if acc == acc else ""
+            self._log(f"  Modèle few-shot prêt  ·  {len(result['labels'])} "
+                      f"catégories  ·  {result['n']} exemples{acc_txt}", ACCENT)
+        else:
+            self._log(f"  ✗ Échec de l'entraînement : {result.get('error')}", ERROR)
+        self._log_sep()
+        self.classify_panel.refresh_model_info()
+        self._finish()
 
     def _start_worker(self, worker) -> None:
         self._worker = worker

@@ -263,6 +263,64 @@ def _place(src: Path, dest_dir: Path, mode: str) -> None:
 
 # ── Pipeline batch avec callbacks (réutilise la progress card) ────────────────
 
+def _build_clip(assets_dir, on_log):
+    if not assets_available() and assets_dir is None:
+        on_log("  ✗ Modèle absent : place mobileclip_image.onnx, "
+               "text_embeddings.npy et clip_meta.json dans assets/ "
+               "(voir tools/export_clip_assets.py).")
+        return None
+    clf = Classifier(assets_dir)
+    try:
+        clf.load()
+    except Exception as exc:
+        on_log(f"  ✗ Échec chargement modèle : {exc}")
+        return None
+    return clf
+
+
+def _make_classifier(engine, assets_dir, on_log):
+    """Sélectionne le moteur de classification.
+
+    - "fewshot" (défaut) : tête apprise sur des dossiers déjà triés (embeddings
+      SigLIP + régression logistique) ; repli sur zero-shot si non entraîné.
+    - "clip" : SigLIP zero-shot (prompts texte).
+    Retourne un classifieur (`.labels` + `.classify_paths`) ou None.
+    """
+    if engine == "fewshot":
+        import numpy as _np
+        from core.fewshot import load_model, FewShotClassifier
+        model = load_model()
+        embedder = _build_clip(assets_dir, on_log)        # SigLIP sert d'encodeur
+        if model and embedder:
+            # garde-fou : dimension d'embedding compatible avec le backbone actuel ?
+            probe = embedder.forward(_np.zeros(
+                (1, 3, embedder.input_size, embedder.input_size), _np.float32))
+            if probe.shape[1] != model["W"].shape[1]:
+                on_log(f"  ⚠ Modèle few-shot entraîné avec un autre backbone "
+                       f"(dim {model['W'].shape[1]} ≠ {probe.shape[1]}). "
+                       f"Ré-entraîne-le. Repli sur zero-shot.")
+                return embedder
+            fs = FewShotClassifier.from_model(embedder, model)
+            acc = model.get("acc", float("nan"))
+            acc_txt = f", préc. {acc:.0%}" if acc == acc else ""
+            on_log(f"  Moteur : Few-shot · {len(model['labels'])} catégories "
+                   f"({model['n']} exemples{acc_txt})")
+            return fs
+        if not model:
+            on_log("  ✗ Aucun modèle few-shot entraîné — clique « Entraîner » "
+                   "(dossier d'exemples triés par catégorie).")
+        if embedder:
+            on_log("  ⚠ Repli sur zero-shot.")
+            return embedder
+        return None
+
+    # SigLIP zero-shot
+    clip = _build_clip(assets_dir, on_log)
+    if clip:
+        on_log("  Moteur : zero-shot (SigLIP)")
+    return clip
+
+
 def run_classify_batch(
     folder: Path,
     output_dir=None,
@@ -272,6 +330,7 @@ def run_classify_batch(
     batch_size: int = 16,
     manifest_name: str = "results.json",
     assets_dir: Path = None,
+    engine: str = "fewshot",         # "fewshot" | "clip"
     on_log: Callable[[str], None] = print,
     on_progress: Callable[[int, int], None] = None,
     on_current: Callable[[str, str], None] = None,
@@ -279,25 +338,24 @@ def run_classify_batch(
     on_eta: Callable[[int], None] = None,
     cancel_event: threading.Event = None,
 ) -> dict:
-    """Classe toutes les images d'un dossier. Mono-process, inférence batchée."""
-    folder = Path(folder)
-    if not assets_available() and assets_dir is None:
-        on_log("  ✗ Modèle absent : place mobileclip_image.onnx, text_embeddings.npy "
-               "et clip_meta.json dans assets/ (voir tools/export_clip_assets.py).")
-        return {"ok": 0, "review": 0, "errors": 0, "total": 0, "no_model": True}
+    """Classe toutes les images d'un dossier. Mono-process.
 
+    Moteur par défaut : Few-shot (tête apprise sur des dossiers triés) ; repli
+    sur SigLIP zero-shot si aucun modèle n'est entraîné. Traitement par lots.
+    """
+    folder = Path(folder)
     files = collect_images(folder, recursive)
     total = len(files)
     if total == 0:
         on_log("  Aucune image trouvée.")
         return {"ok": 0, "review": 0, "errors": 0, "total": 0}
 
-    clf = Classifier(assets_dir)
-    try:
-        clf.load()
-    except Exception as exc:
-        on_log(f"  ✗ Échec chargement modèle : {exc}")
+    clf = _make_classifier(engine, assets_dir, on_log)
+    if clf is None:
         return {"ok": 0, "review": 0, "errors": 0, "total": total, "no_model": True}
+
+    if getattr(clf, "per_image", False):
+        batch_size = 1
 
     out_base = Path(output_dir) if output_dir else folder
     rows, ok = [], 0

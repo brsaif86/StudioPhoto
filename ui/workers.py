@@ -88,6 +88,45 @@ class RenameWorker(QThread):
         self.finished.emit(total_renamed, dry_run)
 
 
+class FewShotTrainWorker(QThread):
+    """Entraîne (hors thread UI) la tête few-shot depuis des dossiers triés."""
+    log_line = Signal(str)
+    progress = Signal(int, int)            # (images encodées, total)
+    finished = Signal(dict)                # {"ok", "labels", "n", "acc"} | {"ok":False,"error"}
+
+    def __init__(self, train_dir, assets_dir=None, parent=None):
+        super().__init__(parent)
+        self._train_dir = train_dir
+        self._assets_dir = assets_dir
+        self._cancel = threading.Event()
+
+    def cancel(self) -> None:
+        self._cancel.set()
+
+    def run(self) -> None:
+        try:
+            from core.classification import Classifier
+            from core.fewshot import train_from_folders, save_model, CancelledError
+            self.log_line.emit("  Encodage CLIP des exemples…")
+            embedder = Classifier(self._assets_dir)
+            embedder.load()
+            dirs = [d.strip() for d in str(self._train_dir).split(";") if d.strip()]
+            res = train_from_folders(
+                dirs, embedder,
+                on_log=self.log_line.emit,
+                on_progress=self.progress.emit,
+                cancel_event=self._cancel,
+            )
+            path = save_model(res)
+            self.log_line.emit(f"  → Modèle enregistré : {path}")
+            self.finished.emit({"ok": True, "labels": res["labels"],
+                                "n": res["n"], "acc": res["acc"]})
+        except CancelledError:
+            self.finished.emit({"ok": False, "error": "entraînement annulé"})
+        except Exception as exc:
+            self.finished.emit({"ok": False, "error": str(exc)})
+
+
 class ClassifyWorker(QThread):
     log_line  = Signal(str)
     progress  = Signal(int, int)          # (done, total)
@@ -113,6 +152,7 @@ class ClassifyWorker(QThread):
             threshold    = p.get("threshold", DEFAULT_THRESHOLD),
             recursive    = p.get("recursive", True),
             batch_size   = p.get("batch_size", 16),
+            engine       = p.get("engine", "fewshot"),
             on_log       = self.log_line.emit,
             on_progress  = self.progress.emit,
             on_current   = self.current.emit,

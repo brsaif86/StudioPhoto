@@ -12,8 +12,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter
 
-from core.lut_engine import LutEngine, apply_vibrance
-
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".JPG", ".JPEG"}
 DEFAULT_SUFFIX = "_graded"
 DEFAULT_QUALITY = 95
@@ -54,10 +52,15 @@ def analyze_image(arr: np.ndarray) -> dict:
     }
 
 
-# ── Étalonnage couleur adaptatif v3 ───────────────────────────────────────────
+# ── Étalonnage couleur adaptatif (v3 original — rendu naturel préféré client) ──
 
-def apply_color_grade(arr: np.ndarray, m: dict, lut_engine=None, lut_name=None, lut_strength=1.0, vibrance=0.0) -> Image.Image:
-    """Étalonnage couleur ADAPTATIF (v3). arr normalisé 0..1, modifié en place."""
+def apply_color_grade(arr: np.ndarray, m: dict) -> Image.Image:
+    """Étalonnage naturel & cinématographique ADAPTATIF (v3 original).
+
+    Rendu doux/naturel : WB adaptative, shadow lift, S-curve douce (corps sans
+    durcir), correction peau, légère désaturation, neutralisation des blancs.
+    arr normalisé 0..1, modifié en place ; renvoie une image PIL.
+    """
     mean_lum        = m["mean_lum"]
     std_lum         = m["std_lum"]
     warm_cast       = m["warm_cast"]
@@ -71,49 +74,45 @@ def apply_color_grade(arr: np.ndarray, m: dict, lut_engine=None, lut_name=None, 
         wb_strength = 0.7
     if warm_cast < 0.03:
         wb_strength *= 0.5
-
     arr[:, :, 0] *= 1.0 - 0.03 * wb_strength
     arr[:, :, 1] *= 1.0 - 0.02 * wb_strength
     arr[:, :, 2] *= 1.0 + 0.01 * wb_strength
 
-    # 2. Shadow lift adaptatif — bridé sur les images déjà claires (anti-surexpo)
-    if mean_lum > 0.62 or highlight_ratio > 0.35:
-        lift = 0.0                      # image lumineuse : ne pas ouvrir davantage
-    elif mean_lum > 0.60:
-        lift = 0.006
+    # 2. Shadow lift adaptatif
+    if mean_lum > 0.60:
+        lift = 0.008
     elif mean_lum > 0.50:
         lift = 0.012
     else:
         lift = 0.018
-    if lift:
-        arr *= (1 - lift)
-        arr += lift
+    arr *= (1 - lift)
+    arr += lift
 
-    # 3. S-curve adaptative
-    curve_strength = 0.02 if std_lum > 0.20 else (0.03 if std_lum > 0.15 else 0.04)
+    # 3. S-curve adaptative (sin) — ajoute du corps sans durcir
+    if std_lum > 0.20:
+        curve_strength = 0.02
+    elif std_lum > 0.15:
+        curve_strength = 0.03
+    else:
+        curve_strength = 0.04
     arr += curve_strength * np.sin(np.pi * arr) * (1 - arr) * arr * 4
 
-    # 4. Correction peau adaptative
+    # 4. Correction peau — neutralise les zones orange
     r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
     orange_mask = (
         (r > 0.45) & (g > 0.30) & (b < 0.60) & (r > g) & (g > b)
     ).astype(np.float32)
-
     mask_img = Image.fromarray((orange_mask * 255).astype(np.uint8))
     mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=8))
     orange_mask = np.asarray(mask_img, dtype=np.float32) / 255.0
-
-    # Correction peau ADOUCIE : on retire moins de rouge et on ajoute très peu
-    # de bleu → la peau garde sa chaleur naturelle (évite le teint terne/gris).
     skin_strength = 0.5 if warm_cast > 0.08 else 1.0
-    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.015 * skin_strength
-    arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.005 * skin_strength
+    arr[:, :, 0] -= orange_mask * arr[:, :, 0] * 0.03 * skin_strength
+    arr[:, :, 2] += orange_mask * (1 - arr[:, :, 2]) * 0.015 * skin_strength
 
-    # 5. Désaturation TRÈS légère (réduite) — garde des couleurs vivantes,
-    #    pas fades. On désature seulement 3 % au lieu de 7 %.
+    # 5. Désaturation légère (7 %)
     lum_map = (0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2])[:, :, np.newaxis]
-    arr *= 0.97
-    arr += lum_map * 0.03
+    arr *= 0.93
+    arr += lum_map * 0.07
     np.clip(arr, 0, 1, out=arr)
 
     # 6. Gamma lift adaptatif
@@ -122,45 +121,67 @@ def apply_color_grade(arr: np.ndarray, m: dict, lut_engine=None, lut_name=None, 
     elif mean_lum < 0.55:
         arr **= 0.99
 
-    # 6b. Anti-surexposition — rolloff doux des très hautes lumières
-    #     Récupère du détail dans les blancs « cramés » sans grisailler la robe :
-    #     seuls les pixels au-dessus de l'épaule (0.86) sont compressés, et
-    #     d'autant plus que l'image est globalement claire.
-    roll = 0.50 if (mean_lum > 0.62 or highlight_ratio > 0.30) else 0.22
-    shoulder = 0.86
-    over = np.clip((arr - shoulder) / (1.0 - shoulder), 0.0, 1.0)
-    arr -= over * (arr - shoulder) * roll
-
-    # 7. Neutralisation des blancs — protection anti-dominante (bleu/couleur)
-    #    Les pixels très clairs (robe blanche, ciel) sont ramenés fortement vers
-    #    le gris neutre afin qu'ils ne prennent AUCUNE teinte. Le poids monte
-    #    progressivement avec la luminance (rampe 0.72 → 0.92) puis est lissé
-    #    pour éviter tout liseré sur les bords.
-    lum_w = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
-    whiteness = np.clip((lum_w - 0.72) / 0.20, 0.0, 1.0)
-
-    whiteness = np.asarray(
-        Image.fromarray((whiteness * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(4)),
+    # 7. Neutralisation des blancs adaptative (douce sur studio blanc)
+    nw_strength = 0.15 if highlight_ratio > 0.25 else 0.30
+    near_white = (
+        (arr[:, :, 0] > 0.75) & (arr[:, :, 1] > 0.75) & (arr[:, :, 2] > 0.70)
+    ).astype(np.float32)
+    nw_smooth = np.asarray(
+        Image.fromarray((near_white * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(6)),
         dtype=np.float32,
     ) / 255.0
-
-    # Neutralisation forte sur les blancs (jusqu'à 0.92 → quasi R=G=B),
-    # adoucie si l'image comporte déjà beaucoup de hautes lumières.
-    max_neutral = 0.85 if highlight_ratio > 0.25 else 0.92
     avg = (arr[:, :, 0] + arr[:, :, 1] + arr[:, :, 2]) / 3.0
-    factor = whiteness * max_neutral
+    factor = nw_smooth * nw_strength
     for c in range(3):
         arr[:, :, c] = arr[:, :, c] * (1 - factor) + avg * factor
 
-    # 8. LUT 3D & Vibrance (Optionnel)
-    if lut_engine and lut_name:
-        arr = lut_engine.apply(arr, lut_name, lut_strength)
-
-    if vibrance != 0:
-        arr = apply_vibrance(arr, vibrance)
-
     np.clip(arr, 0, 1, out=arr)
     return Image.fromarray((arr * 255).astype(np.uint8))
+
+
+def apply_color_grade_warm(arr: np.ndarray, m: dict) -> Image.Image:
+    """« Naturel 2 » — couleurs naturelles fidèles + touche cinématique.
+
+    v3 d'abord (base naturelle fidèle), puis une teinte d'ambiance très dosée :
+    légère chaleur sur les midtones (blancs/noirs intacts), hautes lumières un
+    soupçon chaudes, ombres un soupçon teal (teal & orange subtil), et une
+    pointe de profondeur. Réf. d'ambiance : Dotan Maor / Esposa.
+    """
+    img = apply_color_grade(arr, m)                      # base v3 naturelle
+    a = np.asarray(img, dtype=np.float32) / 255.0
+    r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+    skin = ((r > 0.45) & (g > 0.30) & (b < 0.60) & (r > g) & (g > b)).astype(np.float32)
+    skin = np.asarray(
+        Image.fromarray((skin * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(8)),
+        dtype=np.float32,
+    ) / 255.0
+
+    # 1. Très légère chaleur sur les MIDTONES — fidèle aux couleurs naturelles,
+    #    aucun voile : blancs (robe) et noirs intacts, peau tempérée.
+    lum = (0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2])
+    mid = np.clip(1.0 - np.abs(lum - 0.48) / 0.40, 0.0, 1.0)      # cloche midtones
+    w = 0.012 * mid * (1.0 - skin * 0.45)
+    a[:, :, 0] *= 1.0 + w
+    a[:, :, 2] *= 1.0 - w * 0.80
+    np.clip(a, 0, 1, out=a)
+
+    # 2. Touche CINÉMATIQUE subtile (teal & orange très dosé) : hautes lumières
+    #    non blanches un soupçon chaudes, ombres un soupçon teal. Les couleurs
+    #    restent fidèles — c'est une teinte d'ambiance, pas un filtre.
+    lum = (0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2])
+    not_white = np.clip((0.92 - lum) / 0.20, 0.0, 1.0)            # protège les blancs
+    hi = ((lum ** 2) * not_white)[:, :, np.newaxis]
+    sh = ((1.0 - lum) ** 2)[:, :, np.newaxis]
+    a += hi * np.asarray([0.016, 0.007, -0.006], np.float32)      # HL légèrement chaudes
+    a += sh * np.asarray([-0.006, 0.001, 0.008], np.float32)      # ombres légèrement teal
+    np.clip(a, 0, 1, out=a)
+
+    # 3. Légère profondeur (contraste doux côté ombres) — fonds romantiques.
+    pivot = 0.45
+    d = a - pivot
+    a = pivot + d * np.where(d < 0.0, 1.12, 1.0)
+    np.clip(a, 0, 1, out=a)
+    return Image.fromarray((a * 255).astype(np.uint8))
 
 
 # ── Étalonnage N&B ────────────────────────────────────────────────────────────
@@ -184,10 +205,6 @@ def process_image(
     quality: int = DEFAULT_QUALITY,
     profile: dict = None,
     edit=None,
-    lut_engine=None,
-    lut_name=None,
-    lut_strength=1.0,
-    vibrance=0.0,
 ) -> str:
     """Traite une image et retourne un message de statut.
 
@@ -216,7 +233,7 @@ def process_image(
             else:
                 arr01  = arr255 / 255.0
                 m      = profile if profile else analyze_image(arr01)
-                graded = apply_color_grade(arr01, m, lut_engine=lut_engine, lut_name=lut_name, lut_strength=lut_strength, vibrance=vibrance)
+                graded = apply_color_grade(arr01, m)
                 mode   = "Couleur" + ("·série" if profile else "")
                 lum_label = (
                     "sombre"    if m["mean_lum"] < 0.45 else
@@ -225,14 +242,10 @@ def process_image(
                 )
                 info = f"  | lum:{lum_label} cast:{m['warm_cast']:+.2f} hl:{m['highlight_ratio']:.0%}"
         else:
-            # ── Éditeur v3.0 : preset + corrections manuelles (+ LUT) ──
+            # ── Éditeur : preset + corrections manuelles ──
             from core.adjustments import render_with_profile
             arr01 = arr255 / 255.0
-            out01 = render_with_profile(
-                arr01, edit, profile,
-                lut_engine=lut_engine, lut_name=lut_name,
-                lut_strength=lut_strength, vibrance=vibrance,
-            )
+            out01 = render_with_profile(arr01, edit, profile)
             graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
             mode = edit.label()
             info = "  | édité"
@@ -250,7 +263,7 @@ def process_image(
 # ── Aperçu en mémoire (avant / après) ─────────────────────────────────────────
 
 def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None,
-                  edit=None, lut_engine=None, lut_name=None, lut_strength=1.0, vibrance=0.0):
+                  edit=None):
     """Étalonne une image EN MÉMOIRE et retourne (original, graded, mode, metrics).
 
     - Ne sauvegarde rien sur disque (usage : prévisualisation UI).
@@ -278,15 +291,11 @@ def grade_preview(input_path: Path, max_dim: int = 1600, profile: dict = None,
             mode, metrics = "N&B", {}
         else:
             metrics = profile if profile else analyze_image(arr01)
-            graded  = apply_color_grade(arr01, metrics, lut_engine=lut_engine, lut_name=lut_name, lut_strength=lut_strength, vibrance=vibrance)
+            graded  = apply_color_grade(arr01, metrics)
             mode    = "Couleur" + ("·série" if profile else "")
     else:
         from core.adjustments import render_with_profile
-        out01  = render_with_profile(
-            arr01, edit, profile,
-            lut_engine=lut_engine, lut_name=lut_name,
-            lut_strength=lut_strength, vibrance=vibrance,
-        )
+        out01  = render_with_profile(arr01, edit, profile)
         graded = Image.fromarray((np.clip(out01, 0, 1) * 255).astype(np.uint8))
         mode   = edit.label()
         metrics = profile if profile else analyze_image(arr01)
@@ -321,11 +330,9 @@ def _ensure_std_streams() -> None:
 def _grade_worker(args: tuple) -> str:
     """Wrapper picklable pour mp.Pool."""
     _ensure_std_streams()
-    input_path, output_path, skip_existing, quality, profile, edit, lut_dir, lut_name, lut_strength, vibrance = args
-    engine = LutEngine(lut_dir) if lut_dir else None
+    input_path, output_path, skip_existing, quality, profile, edit = args
     return process_image(
         Path(input_path), Path(output_path), skip_existing, quality, profile, edit,
-        lut_engine=engine, lut_name=lut_name, lut_strength=lut_strength, vibrance=vibrance
     )
 
 
@@ -342,12 +349,8 @@ def collect_grade_tasks(
     on_log=None,
     edit_global=None,
     edits_by_path: dict = None,
-    lut_dir: str = None,
-    lut_name: str = None,
-    lut_strength: float = 1.0,
-    vibrance: float = 0.0,
 ) -> list:
-    """Retourne la liste des tuples (input, output, skip, quality, profile, edit, lut_dir, lut_name, lut_strength, vibrance).
+    """Retourne la liste des tuples (input, output, skip, quality, profile, edit).
 
     - coherent_series=True : profil moyen calculé PAR DOSSIER (rendu uniforme).
     - edit_global : EditParams appliqué à toutes les images sans surcharge.
@@ -392,7 +395,7 @@ def collect_grade_tasks(
         profile = profiles.get(input_path.parent) if coherent_series else None
         edit = edits_by_path.get(str(input_path), edit_global)
         tasks.append(
-            (str(input_path), str(out_path), skip_existing, quality, profile, edit, lut_dir, lut_name, lut_strength, vibrance)
+            (str(input_path), str(out_path), skip_existing, quality, profile, edit)
         )
     return tasks
 

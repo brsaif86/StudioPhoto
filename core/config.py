@@ -31,11 +31,15 @@ def _defaults() -> dict:
         "classify_threshold":  0.45,
         "classify_batch":      16,
         "classify_recursive":  True,
-        "lut_dir":             "assets/luts",
-        "lut_name":            None,
-        "lut_strength":        0.85,
-        "vibrance":            0.10,
+        "classify_engine":     "fewshot",  # "fewshot" | "clip"
+        "classify_train_dir":  "",         # dossier(s) d'exemples triés (few-shot)
     }
+
+
+def config_dir() -> Path:
+    """Dossier de config inscriptible (%APPDATA%/StudioPhoto) — pour y stocker
+    aussi le modèle few-shot, hors bundle PyInstaller en lecture seule."""
+    return _CONFIG_PATH.parent
 
 
 def load() -> dict:
